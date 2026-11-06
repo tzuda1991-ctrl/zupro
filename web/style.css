@@ -39,3 +39,18 @@ body{background:#fff0dc}
 .drawer-wave{background:linear-gradient(165deg,transparent 25%,#f5c044 26%,#c97a22 39%,#6c2d0d 72%);height:60px}
 .market-icon{font-family:Georgia,serif;font-size:33px}.auth-panel{border-top:1px solid #f1dcc6}
 @media(max-width:365px){.banner-art{width:48px}.banner-title{font-size:26px}.auth-logo{font-size:32px}.auth-star{width:45px;height:45px}}
+
+/* v7: match approved compact reference proportions and premium restraint */
+.auth-brand{height:31vh;min-height:205px;max-height:285px;padding-top:25px;background:radial-gradient(ellipse at 50% 18%,#fffefa 0%,#fff0df 80%)}
+.auth-logo{font-size:33px;letter-spacing:-1.4px}.auth-star{width:44px;height:44px}.auth-crown{height:75px;margin:4px auto 0}.auth-crown .graphic{width:80px;height:74px;filter:drop-shadow(0 3px 2px #8a480c33)}
+.auth-laurel{font-size:12px;margin-top:3px}.auth-panel{padding-top:18px;min-height:64vh;border-radius:24px 24px 0 0}.auth-panel h2{font-size:19px;margin-bottom:18px}.input-wrap{height:46px;margin:10px 0}.auth-options{margin:12px 0 16px}.auth-switch{margin-top:15px}.auth-features{margin-top:17px}.auth-features span{font-size:20px}.wave-bottom{position:relative;height:45px}
+.banner{height:117px;margin-top:7px;border-radius:14px;background:radial-gradient(ellipse at 50% 115%,#e9a52e 0%,transparent 55%),linear-gradient(115deg,#431a08,#8a390a 58%,#431807)}
+.banner-art{width:58px;height:61px}.banner-crown{height:35px}.banner-crown .graphic{width:46px;height:38px}.banner-title{font-size:27px}.banner-center small{font-size:9px}.dots{height:12px}
+.user-strip{padding:7px 9px;margin-bottom:7px}.user-badge{width:37px;height:37px}.user-badge .graphic{width:31px;height:31px}.user-details strong{font-size:13px}.wallet-details strong{font-size:14px}.wallet-plus{width:32px;height:32px}
+.actions{gap:5px}.action{min-height:68px;padding:7px 2px;font-size:9px;border-radius:13px}.action-icon{height:29px;width:31px}.action-icon svg{width:25px;height:25px}
+.ticker{margin-top:7px;margin-bottom:7px;padding:6px 4px;font-size:9px}
+.market-heading{margin:5px 13px}.market-heading strong{font-size:17px}
+.market{min-height:70px;margin:6px 12px;padding:7px 9px;border-radius:14px;box-shadow:0 2px 4px #7435111b}.market-icon{width:43px;height:43px;font-size:27px}.market h3{font-size:11px}.market-time{font-size:8px}.market-side{gap:6px}.view{font-size:10px;padding:7px 11px}
+.bottom{padding:6px 5px;bottom:8px;border-radius:22px}.bottom button{font-size:9px}.bottom .center-crown{width:52px;min-width:52px;height:52px}.bottom .center-crown .graphic,.bottom .center-crown svg{width:37px;height:36px}
+.brand{font-size:25px}.brand-star,.brand-star svg{width:27px;height:28px}.top{height:54px}
+@media(min-height:800px){.auth-brand{height:30vh}}
