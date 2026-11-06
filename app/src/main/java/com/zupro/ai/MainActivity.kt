@@ -15,6 +15,7 @@ class MainActivity : Activity() {
     private lateinit var prompt: EditText
     private lateinit var engine: OfflineEngine
     private val pickModel = 101
+    @Volatile private var busy = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,11 +47,22 @@ class MainActivity : Activity() {
         root.addView(prompt)
         root.addView(Button(this).apply { text = "Send"; setOnClickListener {
             val question = prompt.text.toString().trim()
-            if (question.isNotEmpty()) {
-                output.append("\n\nYou: $question\nZUPRO: ")
+            if (question.isNotEmpty() && !busy) {
+                busy = true
+                prompt.setText("")
+                output.append("\n\nYou: $question\nZUPRO: Generating... (first reply can take time)")
                 Thread {
-                    val answer = engine.generate(question)
-                    runOnUiThread { output.append(answer) }
+                    val answer = try { engine.generate(question) }
+                        catch (e: Exception) { "Error: ${e.message}" }
+                    runOnUiThread {
+                        val current = output.text.toString()
+                        val marker = "Generating... (first reply can take time)"
+                        val index = current.lastIndexOf(marker)
+                        if (index >= 0) {
+                            output.text = current.substring(0, index) + answer + current.substring(index + marker.length)
+                        } else output.append("\n" + answer)
+                        busy = false
+                    }
                 }.start()
             }
         } })
