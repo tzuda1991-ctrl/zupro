@@ -4,16 +4,26 @@ import android.content.Context
 import java.io.File
 
 class OfflineEngine(private val context: Context) {
-    private var modelPath: String? = null
+    companion object {
+        init { System.loadLibrary("zupro") }
+    }
 
+    private external fun nativeLoadModel(path: String): Boolean
+    private external fun nativeGenerate(prompt: String, maxTokens: Int): String
+    private external fun nativeUnloadModel()
+
+    @Synchronized
     fun load(path: String): String {
-        if (!File(path).exists()) return "Model not found."
-        modelPath = path
-        return "Model imported: ${File(path).name}. Inference engine is not installed yet."
+        if (!File(path).isFile) return "Model file not found."
+        return if (nativeLoadModel(path)) "Offline model ready. Ask ZUPRO anything!"
+        else "Could not load GGUF model. Try a smaller Q4 model."
     }
 
+    @Synchronized
     fun generate(prompt: String): String {
-        if (modelPath == null) return "Please import a GGUF model first."
-        return "Offline inference is not available in this starter yet. Next step: integrate llama.cpp native library."
+        return nativeGenerate(prompt, 160)
     }
+
+    @Synchronized
+    fun close() = nativeUnloadModel()
 }
