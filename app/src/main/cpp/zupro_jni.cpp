@@ -81,13 +81,25 @@ Java_com_zupro_ai_OfflineEngine_nativeGenerateStreaming(JNIEnv *env, jobject, js
             if (n > 0) {
                 answer.append(piece, n);
                 if (onToken) {
-                    std::string chunk(piece, n);
-                    jstring part = env->NewStringUTF(chunk.c_str());
-                    if (part) {
-                        env->CallVoidMethod(callback, onToken, part);
-                        env->DeleteLocalRef(part);
+                    pending.append(piece, n);
+                    // UTF-8 characters can span multiple model tokens.
+                    bool complete = true;
+                    for (size_t j = 0; j < pending.size();) {
+                        unsigned char c = (unsigned char)pending[j];
+                        size_t width = c < 0x80 ? 1 : (c & 0xE0) == 0xC0 ? 2 :
+                                       (c & 0xF0) == 0xE0 ? 3 : (c & 0xF8) == 0xF0 ? 4 : 1;
+                        if (j + width > pending.size()) { complete = false; break; }
+                        j += width;
                     }
-                    if (env->ExceptionCheck()) { env->ExceptionClear(); ok = false; break; }
+                    if (complete) {
+                        jstring part = env->NewStringUTF(pending.c_str());
+                        if (part) {
+                            env->CallVoidMethod(callback, onToken, part);
+                            env->DeleteLocalRef(part);
+                        }
+                        pending.clear();
+                        if (env->ExceptionCheck()) { env->ExceptionClear(); ok = false; break; }
+                    }
                 }
             }
             llama_sampler_accept(sampler, tok);
