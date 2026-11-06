@@ -54,3 +54,20 @@ body{background:#fff0dc}
 .bottom{padding:6px 5px;bottom:8px;border-radius:22px}.bottom button{font-size:9px}.bottom .center-crown{width:52px;min-width:52px;height:52px}.bottom .center-crown .graphic,.bottom .center-crown svg{width:37px;height:36px}
 .brand{font-size:25px}.brand-star,.brand-star svg{width:27px;height:28px}.top{height:54px}
 @media(min-height:800px){.auth-brand{height:30vh}}
+
+/* STAR777 market reference: fixed viewport eight-tile composition */
+.market-screen{height:100dvh;min-height:0;overflow:hidden;display:flex;flex-direction:column;position:relative;background:linear-gradient(#fff8ed,#fff0de);padding-bottom:calc(83px + env(safe-area-inset-bottom,0px))}
+.market-screen .top{flex:0 0 56px}
+.market-hero{flex:0 0 clamp(100px,20dvh,170px);margin:9px 9px 10px;border-radius:22px;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;background:radial-gradient(ellipse at 50% 120%,#d98b1e,transparent 60%),linear-gradient(120deg,#421a07,#7b3208 65%,#421806);box-shadow:inset 0 0 0 1px #c98d41,0 5px 11px #7b360e25}
+.market-hero:after{content:"";position:absolute;left:-10%;right:-10%;bottom:0;height:27%;border-bottom:5px solid #e9ac3d;border-radius:0 0 50% 50%;transform:rotate(-1deg);pointer-events:none}
+.market-back{position:absolute;left:13px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:#ffd477;font-size:32px;z-index:1}
+.market-hero-center{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;min-width:0;max-width:85%}
+.market-hero-crown{display:block;width:48px;height:42px}.market-hero-crown .graphic{width:48px;height:42px}
+.market-hero-center strong{color:#fff8e9;font-size:clamp(17px,5.1vw,28px);font-weight:900;font-style:italic;text-align:center;white-space:nowrap;text-shadow:0 3px 3px #2a1008}
+.market-laurel{position:absolute;right:18px;color:#f2b846;font-size:34px}
+.market-game-grid{flex:1;min-height:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(4,minmax(0,1fr));gap:clamp(7px,1.2dvh,13px);padding:0 10px 7px}
+.market-game-card{min-height:0;min-width:0;border:1px solid #e0c7a8;border-radius:19px;background:linear-gradient(165deg,#fffaf5 0%,#fff7ee 70%,#ffe3bc 100%);box-shadow:0 3px 5px #7e3c161b;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:clamp(4px,1dvh,10px);font-size:clamp(12px,3.3vw,19px);font-weight:800;color:#351708;white-space:nowrap;padding:5px 2px}
+.market-game-symbol{display:flex;align-items:center;justify-content:center;width:clamp(40px,8dvh,73px);height:clamp(40px,8dvh,73px);border-radius:17px;background:linear-gradient(140deg,#b66d25,#572605);color:#ffdb51;font-size:clamp(25px,5dvh,43px);text-shadow:0 1px 3px #f7b51b;box-shadow:inset 0 2px 2px #e4a44a,0 3px 6px #66310d4d}
+.market-wave{height:10px;flex:none;background:linear-gradient(90deg,#c17b16,#f9c451,#7d370f)}
+.market-screen .bottom{position:absolute;bottom:calc(7px + env(safe-area-inset-bottom,0px));left:10px;right:10px;margin:0;z-index:4}
+@media(max-height:650px){.market-screen{padding-bottom:70px}.market-screen .top{flex-basis:47px}.market-hero{flex-basis:82px;margin:5px 8px}.market-game-grid{gap:5px}.market-game-card{border-radius:12px}.market-game-symbol{width:35px;height:35px;font-size:23px}.market-screen .bottom{bottom:3px}}
