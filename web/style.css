@@ -223,3 +223,34 @@ html,body{background:#edf7ff;color:#142d4e}
 .wave-bottom{height:36px;margin-top:4px}
 @media(max-width:380px){.auth-brand{padding-top:11px}.auth-panel{margin:0 10px;padding:12px}.auth-panel .input-wrap{height:47px}.auth-panel .gold{min-height:47px}.auth-switch button{min-height:42px}}
 @media(max-height:720px){.auth-crown{height:66px;width:82px;margin-top:4px}.auth-brand{padding-bottom:8px}.auth-panel{padding-top:10px;padding-bottom:10px}.auth-panel h2{margin-bottom:8px}.auth-panel .input-wrap{height:43px;margin:7px 0}.auth-options{margin:9px 0}.auth-panel .gold{min-height:43px}.auth-switch{margin-top:9px}.auth-switch button{min-height:39px}.auth-features{margin-top:8px}}
+
+
+/* STAR777 approved premium login refinement v16 */
+.app:has(.auth-shell){padding-bottom:0;min-height:100dvh}
+.auth-shell{display:flex;flex-direction:column;min-height:100dvh;overflow:hidden;background:linear-gradient(150deg,#78c7ff 0%,#d8efff 43%,#e6f5ff 77%,#a8d9fb 100%)}
+.auth-shell:before{top:-116px;height:207px;left:-12%;width:124%;background:linear-gradient(125deg,#007be0 0%,#063478 48%,#061c53 80%,#0672ce);border-bottom:4px solid #f9ca30;box-shadow:0 3px 6px #0d468033}
+.auth-brand{flex:none;padding:14px 12px 15px;background:transparent}
+.auth-logo{font-size:clamp(30px,8.6vw,45px);gap:5px}
+.auth-star{width:clamp(40px,11vw,57px);height:clamp(40px,11vw,57px)}
+.auth-crown{position:relative;width:142px;height:95px;margin:12px auto 0;display:grid;place-items:center}
+.auth-crown .graphic{width:100px;height:89px;position:relative;z-index:1}
+.auth-crown:before,.auth-crown:after{content:'❧';position:absolute;top:17px;color:#eab51e;font-size:54px;line-height:1;text-shadow:0 1px 2px #7b490e55}
+.auth-crown:before{left:-9px;transform:rotate(-50deg)}
+.auth-crown:after{right:-9px;transform:scaleX(-1) rotate(-50deg)}
+.auth-laurel{margin:8px auto 0;padding:8px 13px;border:2px solid #f6c92f;border-radius:30px;font-size:clamp(11px,3.2vw,15px);background:linear-gradient(#095eb0,#042b68);box-shadow:0 3px 7px #06447a44}
+.auth-panel{flex:none;margin:0 12px;padding:16px 16px 12px;border:3px solid #f7c528;border-radius:30px;background:linear-gradient(160deg,#f5fbff,#e1f3ff);box-shadow:0 5px 12px #12518b28,inset 0 0 0 3px #fff}
+.auth-panel h2{padding:11px 6px;margin:0 0 15px;border:2px solid #f7c528;border-radius:28px;background:linear-gradient(#0962b4,#03245d);font-size:clamp(17px,4.7vw,23px);box-shadow:0 3px 7px #0d478b40}
+.auth-heading-person{color:#f8ca29;font-size:19px}
+.auth-panel .input-wrap{height:52px;margin:11px 0;border:1.5px solid #7dc9ef;border-radius:24px;background:linear-gradient(#fff,#e4f5ff);box-shadow:0 2px 5px #17699b2b}
+.auth-panel .input-wrap input{font-size:clamp(14px,3.8vw,17px)}
+.auth-options{margin:14px 0 17px;font-size:clamp(11px,3.1vw,14px)}
+.auth-panel .gold{min-height:53px;border:2px solid #f6c529;border-radius:30px;background:linear-gradient(#0876cf,#03245d);box-shadow:0 3px 8px #06468135;font-size:clamp(20px,5.5vw,27px)}
+.auth-switch{margin-top:17px;font-size:clamp(13px,3.4vw,16px)}
+.auth-switch span{margin-bottom:12px}
+.auth-switch button{min-height:46px;border:2px solid #f4c22c;border-radius:26px;background:linear-gradient(#fff,#e2f3ff);font-size:clamp(13px,3.4vw,16px)}
+.auth-features{margin:17px 7px 7px}
+.auth-features span{font-size:25px}
+.auth-features small{font-size:11px}
+.demo-note{margin:11px 0 4px;font-size:10px}
+.wave-bottom{flex:1;min-height:48px;margin-top:8px;background:linear-gradient(170deg,transparent 0 43%,#ffcd38 44% 49%,#0878d0 51%,#02255f 87%);opacity:1}
+@media(max-height:780px){.auth-brand{padding-top:9px;padding-bottom:9px}.auth-crown{height:70px;margin-top:4px}.auth-crown .graphic{height:69px;width:79px}.auth-crown:before,.auth-crown:after{font-size:39px}.auth-laurel{padding:5px 11px;margin-top:4px}.auth-panel{padding:10px 13px}.auth-panel h2{margin-bottom:8px;padding:8px}.auth-panel .input-wrap{height:43px;margin:7px 0}.auth-options{margin:9px 0}.auth-panel .gold{min-height:44px}.auth-switch{margin-top:9px}.auth-switch span{margin-bottom:7px}.auth-switch button{min-height:39px}.auth-features{margin-top:8px}.demo-note{margin:5px 0 2px}}
