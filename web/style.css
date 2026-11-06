@@ -161,3 +161,7 @@ html,body{background:#edf7ff;color:#142d4e}
 .muted,.small,.demo-note,.footer-note{color:#607e9b}
 .warning{background:#fff4db;color:#6c4b15}
 @media(max-width:360px){.brand{font-size:21px}.market-game-grid{gap:6px}}
+
+/* Result Charts heading: clean, aligned icon */
+.results-heading-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 34px;width:34px;height:34px;margin-right:2px;letter-spacing:normal;color:#20588b}
+.results-heading-icon svg{display:block;width:32px;height:32px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
