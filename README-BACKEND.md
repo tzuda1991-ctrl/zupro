@@ -36,3 +36,8 @@ Set these environment variables on the Railway web service (never commit secrets
 Registration now requires an email. Existing users registered before this update have NULL email and cannot use email recovery until an account email enrollment/verification flow is built. Do not manually set unverified email addresses.
 
 POST /api/auth/forgot-password with {email} sends a six-digit code if the email exists, without revealing account existence. Codes expire in 10 minutes; per-account resend cooldown 60 seconds, per-IP rate limits and 5 attempts per code. POST /api/auth/reset-password with {email,otp,password} resets password and revokes all active sessions. The email sender must be configured before recovery works. SMTP delivery has not been live-tested here.
+
+## Brevo HTTPS API delivery (current)
+The OTP sender now uses Brevo's HTTPS transactional endpoint instead of SMTP (Railway SMTP connection timed out).
+Required Railway environment variables: BREVO_API_KEY (Brevo API v3 key, NOT SMTP key), SMTP_FROM (Brevo-verified sender such as admin@zutech.online), OTP_SECRET (32+ character secret), DATABASE_URL.
+Old SMTP_HOST, SMTP_PORT, SMTP_USER and SMTP_PASS are not used by the OTP sender anymore. Do not paste API keys into GitHub or chat. After setting BREVO_API_KEY, redeploy and test an email associated with a registered user. A successful API request means accepted for processing, not guaranteed inbox delivery; inspect Brevo transactional logs for delivery.
