@@ -1,0 +1,31 @@
+const app=document.getElementById('app');
+const state={page:'signup',drawer:false,username:'',markets:[],selected:'',tab:'login'};
+const categories=['Single Digit','Single Pana','Jodi Digit','Double Pana','Triple Pana','Half Sangam','Full Sangam','SP DP TP','DP Motor','TP Motor'];
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const go=(page,selected='')=>{state.page=page;state.selected=selected;state.drawer=false;render();window.scrollTo(0,0)};
+const head=()=>'<header class="top"><button class="hamb" data-action="drawer">☰</button><div class="brand"><span>STAR</span>777</div><div class="balance">👛 0 Demo</div></header>';
+const nav=()=>'<nav class="bottom"><button data-page="history">⚒<br>History</button><button data-page="passbook">▣<br>Passbook</button><button class="active" data-page="home">⌂<br>Home</button><button data-page="charts">▥<br>Chart</button><button data-page="wallet">◈<br>Funds</button></nav>';
+const auth=()=>'<div class="hero"><div class="emblem"><div class="pot">🏺</div><strong>STAR777</strong></div><h1>'+(state.page==='signup'?'Create an Account':'Welcome Back')+'</h1><p style="color:#ffd13a">SATTA MATKA • DEMO</p></div><div class="panel"><form id="authform">'+(state.page==='signup'?'<input class="field" name="username" placeholder="Enter Username" required minlength="3"><input class="field" name="mobile" placeholder="Enter Your Mobile Number" inputmode="tel" pattern="[0-9]{10}" required>':'<input class="field" name="username" placeholder="Enter Username" required>')+'<input class="field" type="password" name="password" placeholder="Enter Password" minlength="6" required><button class="gold" type="submit">'+(state.page==='signup'?'SIGN UP':'LOGIN')+'</button></form><div class="center"><p>'+(state.page==='signup'?'Already have an account?':'New to STAR777?')+'</p><button class="link" data-page="'+(state.page==='signup'?'login':'signup')+'">'+(state.page==='signup'?'Login Here!':'Sign Up Here!')+'</button><p class="small">Prototype only — no real accounts created</p></div></div>';
+const home=()=>head()+'<div class="notice">📢 Welcome to STAR777 • Demo Preview</div><div class="grid"><button class="tile purple" data-page="wallet">👛 Add Point</button><button class="tile blue" data-page="withdraw">🏧 Withdrawal</button><button class="tile green" data-page="support">💬 Support</button><button class="tile pink" data-page="charts">⭐ Starline</button></div>'+state.markets.map(m=>'<section class="market"><button class="chart" data-chart="'+esc(m.name)+'">📊</button><main><h3>'+esc(m.name)+'</h3><div class="nums">*** - ** - ***</div><div class="times">Open '+esc(m.open)+' · Close '+esc(m.close)+'</div></main><div><div class="tag">Demo Market</div><button class="play" data-market="'+esc(m.name)+'">VIEW</button></div></section>').join('')+nav();
+const menu=()=>state.drawer?'<div class="drawer" data-action="close"><aside><button class="close" data-action="close">✕ Close</button><h2>👤 '+esc(state.username||'Guest')+'</h2><p class="muted">STAR777 demo account</p>'+[['home','🏠 Home'],['profile','👤 My Profile'],['wallet','👛 Add Point'],['withdraw','🏧 Withdrawal'],['passbook','📒 Wallet Statement'],['history','🏆 My History'],['charts','📊 Charts'],['support','💬 Support'],['login','🚪 Logout']].map(([p,t])=>'<button data-page="'+p+'">'+t+'</button>').join('')+'</aside></div>':'';
+const sub=(title,body)=>head()+'<div class="pagehead"><button class="back" data-page="home">←</button> '+esc(title)+'</div>'+body+nav();
+const page=()=>{
+switch(state.page){
+case 'signup':case 'login':return auth();
+case 'home':return home();
+case 'charts':return sub('RESULT CHARTS',state.markets.map(m=>'<div class="card row"><strong>'+esc(m.name)+'</strong><button class="link" data-chart="'+esc(m.name)+'">View Chart →</button></div>').join(''));
+case 'chart':return sub(state.selected+' RESULT CHART','<div class="card"><h3>Result Chart</h3><p class="muted">No published results yet. Sample data will be added later.</p></div>');
+case 'market':return sub(state.selected,'<div class="categories">'+categories.map((x,i)=>'<button class="category" data-category="'+esc(x)+'"><span class="emoji">'+['🎯','🃏','🎲','♥️','🍀','💠','⭐','♠️','⚙️','🌟'][i]+'</span>'+x+'</button>').join('')+'</div><p class="footer-note">Categories are display-only in this prototype.</p>');
+case 'category':return sub(state.selected,'<div class="card"><h3>'+esc(state.selected)+'</h3><p>Demo preview. Real-money gameplay is not enabled.</p></div>');
+case 'wallet':return sub('DEMO WALLET','<div class="card"><h2>0 Demo Points</h2><p class="muted">No payment gateway is connected.</p><button class="gold" data-action="demo">Add Demo Points</button></div>');
+case 'withdraw':return sub('WITHDRAWAL','<div class="card"><h3>Withdrawal</h3><p class="warning">Not available in demo mode. No bank or UPI details are collected.</p></div>');
+case 'profile':return sub('MY PROFILE','<div class="card">Username: '+esc(state.username||'Guest')+'<p class="muted">Local preview account only.</p></div>');
+case 'history':case 'passbook':return sub(state.page==='history'?'MY HISTORY':'PASSBOOK','<div class="card">No demo records yet.</div>');
+case 'support':return sub('SUPPORT','<div class="card">Admin contact details will be configured later.</div>');
+default:return home();
+}};
+function render(){app.innerHTML='<div class="app">'+page()+'</div>'+menu()}
+document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.page){go(b.dataset.page);return}if(b.dataset.market){go('market',b.dataset.market);return}if(b.dataset.chart){go('chart',b.dataset.chart);return}if(b.dataset.category){go('category',b.dataset.category);return}if(b.dataset.action==='drawer'){state.drawer=true;render()}if(b.dataset.action==='close'){state.drawer=false;render()}if(b.dataset.action==='demo')alert('Demo points feature will be added in a later milestone.')});
+document.addEventListener('submit',e=>{if(e.target.id!=='authform')return;e.preventDefault();const d=new FormData(e.target);state.username=String(d.get('username')||'Guest');go('home')});
+fetch('/api/markets').then(r=>r.json()).then(data=>{state.markets=data;render()}).catch(()=>{state.markets=[];render()});
+render();
