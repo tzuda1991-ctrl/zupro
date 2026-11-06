@@ -1,20 +1,31 @@
 import express from 'express';
-import { fileURLToPath } from 'node:url';
+import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import {fileURLToPath} from 'node:url';
 import path from 'node:path';
-const app = express();
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../web');
-app.disable('x-powered-by');
-app.use(express.json());
-app.get('/api/health', (_req,res)=>res.json({ok:true,app:'STAR777',mode:'demo'}));
-app.get('/api/markets', (_req,res)=>res.json([
- {name:'LAXMI MORNING',open:'10:00 AM',close:'12:00 PM'},
- {name:'KARNATAKA DAY',open:'10:15 AM',close:'11:15 AM'},
- {name:'MILAN MORNING',open:'10:30 AM',close:'11:30 AM'},
- {name:'SRIDEVI',open:'11:00 AM',close:'12:00 PM'},
- {name:'MAIN BAZAR DAY',open:'01:00 PM',close:'03:00 PM'},
- {name:'SUPREME NIGHT',open:'08:00 PM',close:'10:00 PM'}
-]));
-app.use(express.static(root));
-app.get('*',(_req,res)=>res.sendFile(path.join(root,'index.html')));
-const port=Number(process.env.PORT)||3000;
-app.listen(port,'0.0.0.0',()=>console.log('STAR777 demo listening on '+port));
+import {pool,initDb} from './db.js';
+import {hashPassword,verifyPassword,issueSession,authenticate,adminOnly,tokenHash} from './security.js';
+const app=express(),root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../web');
+app.disable('x-powered-by');app.set('trust proxy',1);app.use(helmet({contentSecurityPolicy:false}));app.use(express.json({limit:'16kb'}));app.use(cookieParser());
+const limit=rateLimit({windowMs:900000,limit:15,standardHeaders:'draft-7',legacyHeaders:false});
+const fallback=[['LAXMI MORNING','10:00 AM','12:00 PM'],['KARNATAKA DAY','10:15 AM','11:15 AM'],['MILAN MORNING','10:30 AM','11:30 AM'],['SRIDEVI','11:00 AM','12:00 PM'],['MAIN BAZAR DAY','01:00 PM','03:00 PM'],['SUPREME NIGHT','08:00 PM','10:00 PM']].map(([name,open,close])=>({name,open,close}));
+const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
+const db=(req,res,next)=>pool?next():res.status(503).json({error:'Database not configured'});
+app.get('/api/health',(_req,res)=>res.json({ok:true,app:'STAR777',database:pool?'configured':'unconfigured'}));
+app.get('/api/markets',wrap(async(_req,res)=>{if(!pool)return res.json(fallback);const {rows}=await pool.query('SELECT id,name,opens AS open,closes AS close FROM markets WHERE enabled=true ORDER BY id');res.json(rows)}));
+app.use('/api',(req,res,next)=>{if(['GET','HEAD','OPTIONS'].includes(req.method))return next();const origin=req.get('origin');if(!origin)return next();try{if(new URL(origin).host===req.get('host'))return next()}catch{}res.status(403).json({error:'Invalid origin'})});
+app.post('/api/auth/register',limit,db,wrap(async(req,res)=>{const {username,password,mobile}=req.body||{};if(typeof username!=='string'||!/^[a-zA-Z0-9_]{3,24}$/.test(username)||typeof password!=='string'||password.length<12||password.length>128||(mobile!==undefined&&!/^[0-9]{10}$/.test(mobile)))return res.status(400).json({error:'Username 3-24 characters, password 12-128 characters, optional 10 digit mobile required'});const hash=await hashPassword(password);try{const {rows}=await pool.query('INSERT INTO users(username,mobile,password_hash) VALUES($1,$2,$3) RETURNING id,username,role',[username.toLowerCase(),mobile||null,hash]);await issueSession(res,rows[0].id);res.status(201).json({user:rows[0]})}catch(e){if(e.code==='23505')return res.status(409).json({error:'Username or mobile exists'});throw e}}));
+app.post('/api/auth/login',limit,db,wrap(async(req,res)=>{const {username,password}=req.body||{};if(typeof username!=='string'||typeof password!=='string'||username.length>100||password.length>128)return res.status(400).json({error:'Invalid credentials'});const {rows}=await pool.query('SELECT id,username,role,password_hash FROM users WHERE username=$1',[username.toLowerCase()]);if(!rows.length||!await verifyPassword(password,rows[0].password_hash))return res.status(401).json({error:'Invalid credentials'});await issueSession(res,rows[0].id);res.json({user:{id:rows[0].id,username:rows[0].username,role:rows[0].role}})}));
+app.get('/api/me',db,authenticate,(req,res)=>res.json({user:req.user}));
+app.post('/api/auth/logout',db,authenticate,wrap(async(req,res)=>{await pool.query('DELETE FROM sessions WHERE id_hash=$1',[tokenHash(req.cookies.star777_session)]);res.clearCookie('star777_session',{path:'/'});res.json({ok:true})}));
+app.get('/api/results',db,wrap(async(req,res)=>{const {rows}=await pool.query('SELECT r.id,m.name AS market,r.result_date,r.result_text FROM results r JOIN markets m ON m.id=r.market_id ORDER BY r.result_date DESC LIMIT 100');res.json(rows)}));
+app.get('/api/wallet',db,authenticate,wrap(async(req,res)=>{const {rows}=await pool.query('SELECT COALESCE(SUM(delta),0)::int AS balance FROM demo_ledger WHERE user_id=$1',[req.user.id]);res.json({currency:'DEMO_POINTS',balance:rows[0].balance})}));
+app.get('/api/transactions',db,authenticate,wrap(async(req,res)=>{const {rows}=await pool.query('SELECT id,delta,note,created_at FROM demo_ledger WHERE user_id=$1 ORDER BY id DESC LIMIT 100',[req.user.id]);res.json(rows)}));
+app.get('/api/notifications',db,authenticate,wrap(async(req,res)=>{const {rows}=await pool.query('SELECT id,title,message,created_at FROM notifications WHERE user_id=$1 OR user_id IS NULL ORDER BY id DESC LIMIT 50',[req.user.id]);res.json(rows)}));
+app.post('/api/support',db,authenticate,wrap(async(req,res)=>{const m=req.body?.message;if(typeof m!=='string'||m.trim().length<5||m.length>2000)return res.status(400).json({error:'Message must be 5-2000 characters'});const {rows}=await pool.query('INSERT INTO support_tickets(user_id,message) VALUES($1,$2) RETURNING id,status',[req.user.id,m.trim()]);res.status(201).json(rows[0])}));
+app.get('/api/admin/summary',db,authenticate,adminOnly,wrap(async(req,res)=>{const [u,t]=await Promise.all([pool.query('SELECT count(*)::int AS count FROM users'),pool.query("SELECT count(*)::int AS count FROM support_tickets WHERE status='open'")]);res.json({users:u.rows[0].count,open_tickets:t.rows[0].count})}));
+app.post('/api/admin/results',db,authenticate,adminOnly,wrap(async(req,res)=>{const {marketId,date,result}=req.body||{};if(!Number.isSafeInteger(marketId)||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date||'')||typeof result!=='string'||result.length>50)return res.status(400).json({error:'Invalid result'});const {rows}=await pool.query('INSERT INTO results(market_id,result_date,result_text) VALUES($1,$2,$3) ON CONFLICT(market_id,result_date) DO UPDATE SET result_text=excluded.result_text RETURNING id',[marketId,date,result]);res.json(rows[0])}));
+app.use(express.static(root));app.get('*',(_req,res)=>res.sendFile(path.join(root,'index.html')));
+app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Internal server error'})});
+const port=Number(process.env.PORT)||3000;initDb().then(()=>app.listen(port,'0.0.0.0',()=>console.log('STAR777 API listening on '+port))).catch(e=>{console.error('Database init failed',e);process.exit(1)});
