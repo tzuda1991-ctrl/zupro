@@ -1,3 +1,5 @@
+import {randomInt,createHmac,timingSafeEqual} from 'node:crypto';
+import {sendOtp,mailConfigured} from './mail.js';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -8,6 +10,9 @@ import {pool,initDb} from './db.js';
 import {hashPassword,verifyPassword,issueSession,authenticate,adminOnly,tokenHash} from './security.js';
 const app=express(),root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../web');
 app.disable('x-powered-by');app.set('trust proxy',1);app.use(helmet({contentSecurityPolicy:false}));app.use(express.json({limit:'16kb'}));app.use(cookieParser());
+const resetLimit=rateLimit({windowMs:15*60*1000,limit:5,standardHeaders:'draft-7',legacyHeaders:false});
+const validEmail=e=>typeof e==='string'&&e.length<=254&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+const otpDigest=(id,code)=>createHmac('sha256',process.env.OTP_SECRET).update(String(id)+':'+code).digest('hex');
 const limit=rateLimit({windowMs:900000,limit:15,standardHeaders:'draft-7',legacyHeaders:false});
 const fallback=[['LAXMI MORNING','10:00 AM','12:00 PM'],['KARNATAKA DAY','10:15 AM','11:15 AM'],['MILAN MORNING','10:30 AM','11:30 AM'],['SRIDEVI','11:00 AM','12:00 PM'],['MAIN BAZAR DAY','01:00 PM','03:00 PM'],['SUPREME NIGHT','08:00 PM','10:00 PM']].map(([name,open,close])=>({name,open,close}));
 const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
@@ -15,8 +20,44 @@ const db=(req,res,next)=>pool?next():res.status(503).json({error:'Database not c
 app.get('/api/health',(_req,res)=>res.json({ok:true,app:'STAR777',database:pool?'configured':'unconfigured'}));
 app.get('/api/markets',wrap(async(_req,res)=>{if(!pool)return res.json(fallback);const {rows}=await pool.query('SELECT id,name,opens AS open,closes AS close FROM markets WHERE enabled=true ORDER BY id');res.json(rows)}));
 app.use('/api',(req,res,next)=>{if(['GET','HEAD','OPTIONS'].includes(req.method))return next();const origin=req.get('origin');if(!origin)return next();try{if(new URL(origin).host===req.get('host'))return next()}catch{}res.status(403).json({error:'Invalid origin'})});
-app.post('/api/auth/register',limit,db,wrap(async(req,res)=>{const {username,password,mobile}=req.body||{};if(typeof username!=='string'||!/^[a-zA-Z0-9_]{3,24}$/.test(username)||typeof password!=='string'||password.length<12||password.length>128||(mobile!==undefined&&!/^[0-9]{10}$/.test(mobile)))return res.status(400).json({error:'Username 3-24 characters, password 12-128 characters, optional 10 digit mobile required'});const hash=await hashPassword(password);try{const {rows}=await pool.query('INSERT INTO users(username,mobile,password_hash) VALUES($1,$2,$3) RETURNING id,username,role',[username.toLowerCase(),mobile||null,hash]);await issueSession(res,rows[0].id);res.status(201).json({user:rows[0]})}catch(e){if(e.code==='23505')return res.status(409).json({error:'Username or mobile exists'});throw e}}));
+app.post('/api/auth/register',limit,db,wrap(async(req,res)=>{const {username,password,mobile,email}=req.body||{};if(typeof username!=='string'||!/^[a-zA-Z0-9_]{3,24}$/.test(username)||typeof password!=='string'||password.length<12||password.length>128||(mobile!==undefined&&!/^[0-9]{10}$/.test(mobile))||!validEmail(email))return res.status(400).json({error:'Username 3-24 characters, password 12-128 characters, optional 10 digit mobile and valid email required'});const hash=await hashPassword(password);try{const {rows}=await pool.query('INSERT INTO users(username,mobile,password_hash,email) VALUES($1,$2,$3,$4) RETURNING id,username,role',[username.toLowerCase(),mobile||null,hash,email.trim().toLowerCase()]);await issueSession(res,rows[0].id);res.status(201).json({user:rows[0]})}catch(e){if(e.code==='23505')return res.status(409).json({error:'Username or mobile exists'});throw e}}));
 app.post('/api/auth/login',limit,db,wrap(async(req,res)=>{const {username,password}=req.body||{};if(typeof username!=='string'||typeof password!=='string'||username.length>100||password.length>128)return res.status(400).json({error:'Invalid credentials'});const {rows}=await pool.query('SELECT id,username,role,password_hash FROM users WHERE username=$1',[username.toLowerCase()]);if(!rows.length||!await verifyPassword(password,rows[0].password_hash))return res.status(401).json({error:'Invalid credentials'});await issueSession(res,rows[0].id);res.json({user:{id:rows[0].id,username:rows[0].username,role:rows[0].role}})}));
+
+app.post('/api/auth/forgot-password',resetLimit,db,wrap(async(req,res)=>{
+ const email=req.body?.email;
+ if(!validEmail(email))return res.status(400).json({error:'Enter a valid email address'});
+ if(!mailConfigured())return res.status(503).json({error:'Email recovery is not configured yet'});
+ const generic={message:'If this email is registered, a reset code will be sent.'};
+ const {rows}=await pool.query('SELECT id,email FROM users WHERE lower(email)=$1',[email.trim().toLowerCase()]);
+ if(!rows.length)return res.json(generic);
+ const id=rows[0].id;
+ const {rows:recent}=await pool.query("SELECT requested_at FROM password_reset_otps WHERE user_id=$1 AND requested_at>now()-interval '60 seconds'",[id]);
+ if(recent.length)return res.json(generic);
+ const code=String(randomInt(0,1000000)).padStart(6,'0');
+ await pool.query("INSERT INTO password_reset_otps(user_id,code_hash,expires_at,attempts_left,requested_at) VALUES($1,$2,now()+interval '10 minutes',5,now()) ON CONFLICT(user_id) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,attempts_left=5,requested_at=now()",[id,otpDigest(id,code)]);
+ await sendOtp(rows[0].email,code);
+ res.json(generic);
+}));
+app.post('/api/auth/reset-password',resetLimit,db,wrap(async(req,res)=>{
+ const {email,otp,password}=req.body||{};
+ if(!validEmail(email)||typeof otp!=='string'||!/^[0-9]{6}$/.test(otp)||typeof password!=='string'||password.length<12||password.length>128)return res.status(400).json({error:'Valid email, 6 digit OTP and password of 12-128 characters required'});
+ const client=await pool.connect();
+ try{
+  await client.query('BEGIN');
+  const {rows}=await client.query('SELECT p.user_id,p.code_hash,p.attempts_left,p.expires_at FROM password_reset_otps p JOIN users u ON u.id=p.user_id WHERE lower(u.email)=$1 FOR UPDATE OF p',[email.trim().toLowerCase()]);
+  const row=rows[0];
+  if(!row||row.attempts_left<=0||new Date(row.expires_at)<=new Date()){await client.query('ROLLBACK');return res.status(400).json({error:'Invalid or expired code'})}
+  const expected=Buffer.from(row.code_hash,'hex'),actual=Buffer.from(otpDigest(row.user_id,otp),'hex');
+  if(!timingSafeEqual(expected,actual)){await client.query('UPDATE password_reset_otps SET attempts_left=attempts_left-1 WHERE user_id=$1',[row.user_id]);await client.query('COMMIT');return res.status(400).json({error:'Invalid or expired code'})}
+  const hash=await hashPassword(password);
+  await client.query('UPDATE users SET password_hash=$1 WHERE id=$2',[hash,row.user_id]);
+  await client.query('DELETE FROM sessions WHERE user_id=$1',[row.user_id]);
+  await client.query('DELETE FROM password_reset_otps WHERE user_id=$1',[row.user_id]);
+  await client.query('COMMIT');
+  res.clearCookie('star777_session',{path:'/'});
+  res.json({message:'Password updated. Please log in.'});
+ }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
+}));
 app.get('/api/me',db,authenticate,(req,res)=>res.json({user:req.user}));
 app.post('/api/auth/logout',db,authenticate,wrap(async(req,res)=>{await pool.query('DELETE FROM sessions WHERE id_hash=$1',[tokenHash(req.cookies.star777_session)]);res.clearCookie('star777_session',{path:'/'});res.json({ok:true})}));
 app.get('/api/results',db,wrap(async(req,res)=>{const {rows}=await pool.query('SELECT r.id,m.name AS market,r.result_date,r.result_text FROM results r JOIN markets m ON m.id=r.market_id ORDER BY r.result_date DESC LIMIT 100');res.json(rows)}));
