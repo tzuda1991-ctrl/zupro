@@ -38,7 +38,8 @@ Java_com_zupro_ai_OfflineEngine_nativeLoadModel(JNIEnv *env, jobject, jstring pa
     auto cp = llama_context_default_params();
     cp.n_ctx = 1024;
     cp.n_batch = 256;
-    cp.n_threads = 4;\n    cp.n_threads_batch = 4;
+    cp.n_threads = 4;
+    cp.n_threads_batch = 4;
     ctx_ = llama_init_from_model(model_, cp);
     if (!ctx_) { unload(); return JNI_FALSE; }
     return JNI_TRUE;
@@ -62,7 +63,10 @@ Java_com_zupro_ai_OfflineEngine_nativeGenerateStreaming(JNIEnv *env, jobject, js
     llama_sampler *sampler = llama_sampler_chain_init(sp);
     llama_sampler_chain_add(sampler, llama_sampler_init_temp(0.7f));
     llama_sampler_chain_add(sampler, llama_sampler_init_dist(1234));
-    std::string answer;\n    jclass callbackClass = env->GetObjectClass(callback);\n    jmethodID onToken = env->GetMethodID(callbackClass, "onToken", "(Ljava/lang/String;)V");
+    std::string answer;
+    std::string pending;
+    jclass callbackClass = env->GetObjectClass(callback);
+    jmethodID onToken = env->GetMethodID(callbackClass, "onToken", "(Ljava/lang/String;)V");
     int pos = 0;
     bool ok = true;
     while (pos < count) {
