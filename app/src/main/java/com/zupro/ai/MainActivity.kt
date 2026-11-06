@@ -120,8 +120,14 @@ class MainActivity : Activity() {
         bubble(question, true)
         val reply = bubble("Thinking on device…", false)
         Thread {
-            val result = try { engine.generate(question) }
-                catch (e: Exception) { "Generation error: ${e.message}" }
+            val partial = StringBuilder()
+            val result = try {
+                engine.generateStreaming(question) { token ->
+                    partial.append(token)
+                    val snapshot = partial.toString()
+                    runOnUiThread { reply.text = snapshot }
+                }
+            } catch (e: Exception) { "Generation error: ${e.message}" }
             runOnUiThread {
                 reply.text = result
                 busy = false
