@@ -5,87 +5,149 @@ import android.os.Bundle
 import android.content.Intent
 import android.net.Uri
 import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
-import android.view.ViewGroup
+import android.view.View
 import android.widget.*
 import java.io.File
 
 class MainActivity : Activity() {
-    private lateinit var output: TextView
-    private lateinit var prompt: EditText
     private lateinit var engine: OfflineEngine
-    private val pickModel = 101
-    @Volatile private var busy = false
+    private lateinit var messages: LinearLayout
+    private lateinit var scroll: ScrollView
+    private lateinit var input: EditText
+    private lateinit var send: Button
+    private lateinit var status: TextView
+    private var busy = false
+    private val bg = Color.rgb(12, 16, 26)
+    private val panel = Color.rgb(27, 34, 49)
+    private val accent = Color.rgb(49, 211, 173)
+
+    private fun shape(color: Int, radius: Float = 20f): GradientDrawable =
+        GradientDrawable().apply { setColor(color); cornerRadius = radius * resources.displayMetrics.density }
+
+    private fun dp(n: Int): Int = (n * resources.displayMetrics.density).toInt()
+
+    private fun text(value: String, size: Float, color: Int = Color.WHITE): TextView =
+        TextView(this).apply { text = value; textSize = size; setTextColor(color) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         engine = OfflineEngine(this)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(28, 36, 28, 24)
-            setBackgroundColor(Color.rgb(15, 19, 31))
+            setBackgroundColor(bg)
+            setPadding(dp(16), dp(24), dp(16), dp(12))
         }
-        fun label(s: String, size: Float): TextView = TextView(this).apply {
-            text = s; textSize = size; setTextColor(Color.WHITE)
-            setPadding(0, 12, 0, 12)
+        val heading = text("✦  ZUPRO AI", 25f).apply { setTypeface(null, Typeface.BOLD) }
+        root.addView(heading)
+        status = text("●  Offline • No model selected", 12f, accent).apply {
+            setPadding(0, dp(6), 0, dp(16))
         }
-        root.addView(label("ZUPRO AI", 28f))
-        root.addView(label("Private • Offline • On-device", 14f))
-        val pick = Button(this).apply { text = "Select GGUF model"; setOnClickListener {
-            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                type = "*/*"; addCategory(Intent.CATEGORY_OPENABLE)
-            }, pickModel)
-        } }
-        root.addView(pick)
-        output = label("Choose a small GGUF model to begin.", 16f)
-        val scroll = ScrollView(this).apply { addView(output) }
-        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        prompt = EditText(this).apply {
-            hint = "Ask ZUPRO anything"; setTextColor(Color.WHITE)
-            setHintTextColor(Color.LTGRAY); minLines = 2
-        }
-        root.addView(prompt)
-        root.addView(Button(this).apply { text = "Send"; setOnClickListener {
-            val question = prompt.text.toString().trim()
-            if (question.isNotEmpty() && !busy) {
-                busy = true
-                prompt.setText("")
-                output.append("\n\nYou: $question\nZUPRO: Generating... (first reply can take time)")
-                Thread {
-                    val answer = try { engine.generate(question) }
-                        catch (e: Exception) { "Error: ${e.message}" }
-                    runOnUiThread {
-                        val current = output.text.toString()
-                        val marker = "Generating... (first reply can take time)"
-                        val index = current.lastIndexOf(marker)
-                        if (index >= 0) {
-                            output.text = current.substring(0, index) + answer + current.substring(index + marker.length)
-                        } else output.append("\n" + answer)
-                        busy = false
-                    }
-                }.start()
+        root.addView(status)
+        val model = Button(this).apply {
+            text = "＋  Import GGUF model"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            background = shape(panel)
+            setOnClickListener {
+                startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    type = "*/*"
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                }, 101)
             }
-        } })
+        }
+        root.addView(model, LinearLayout.LayoutParams(-1, dp(50)))
+        scroll = ScrollView(this).apply { fillViewport = true }
+        messages = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(18), 0, dp(16))
+        }
+        scroll.addView(messages)
+        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        bubble("Welcome to ZUPRO AI. Import a GGUF model to start a private chat.", false)
+        val composer = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = shape(panel)
+            setPadding(dp(8), dp(4), dp(4), dp(4))
+        }
+        input = EditText(this).apply {
+            hint = "Message ZUPRO..."
+            setHintTextColor(Color.LTGRAY)
+            setTextColor(Color.WHITE)
+            textSize = 15f
+            minLines = 1
+            maxLines = 4
+            background = null
+        }
+        composer.addView(input, LinearLayout.LayoutParams(0, -2, 1f))
+        send = Button(this).apply {
+            text = "➤"
+            textSize = 19f
+            setTextColor(bg)
+            background = shape(accent)
+            setOnClickListener { sendMessage() }
+        }
+        composer.addView(send, LinearLayout.LayoutParams(dp(58), dp(48)))
+        root.addView(composer)
         setContentView(root)
+    }
+
+    private fun bubble(message: String, user: Boolean): TextView {
+        val label = text(message, 15f).apply {
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = shape(if (user) Color.rgb(26, 111, 99) else panel)
+        }
+        val wrap = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = if (user) Gravity.END else Gravity.START
+            setPadding(0, dp(6), 0, dp(6))
+        }
+        wrap.addView(label, LinearLayout.LayoutParams(-2, -2))
+        messages.addView(wrap)
+        scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+        return label
+    }
+
+    private fun sendMessage() {
+        val question = input.text.toString().trim()
+        if (question.isEmpty() || busy) return
+        busy = true
+        send.isEnabled = false
+        input.setText("")
+        bubble(question, true)
+        val reply = bubble("Thinking on device…", false)
+        Thread {
+            val result = try { engine.generate(question) }
+                catch (e: Exception) { "Generation error: ${e.message}" }
+            runOnUiThread {
+                reply.text = result
+                busy = false
+                send.isEnabled = true
+                scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+            }
+        }.start()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == pickModel && resultCode == RESULT_OK) {
-            val uri: Uri = data?.data ?: return
-            output.text = "Importing model; please wait..."
-            Thread {
-                try {
-                    val file = File(filesDir, "model.gguf")
-                    contentResolver.openInputStream(uri)!!.use { input ->
-                        file.outputStream().use { output -> input.copyTo(output) }
-                    }
-                    val message = engine.load(file.absolutePath)
-                    runOnUiThread { output.text = message }
-                } catch (e: Exception) {
-                    runOnUiThread { output.text = "Import failed: ${e.message}" }
+        if (requestCode != 101 || resultCode != RESULT_OK) return
+        val uri: Uri = data?.data ?: return
+        status.text = "●  Importing model…"
+        Thread {
+            val result = try {
+                val file = File(filesDir, "model.gguf")
+                contentResolver.openInputStream(uri)!!.use { source ->
+                    file.outputStream().use { target -> source.copyTo(target) }
                 }
-            }.start()
-        }
+                engine.load(file.absolutePath)
+            } catch (e: Exception) { "Model import failed: ${e.message}" }
+            runOnUiThread {
+                status.text = if (result.startsWith("Offline model ready")) "●  Model ready • Offline" else "●  Model error"
+                bubble(result, false)
+            }
+        }.start()
     }
 }
