@@ -1,0 +1,3 @@
+import nodemailer from 'nodemailer';
+export function mailConfigured(){return Boolean(process.env.SMTP_HOST&&process.env.SMTP_USER&&process.env.SMTP_PASS&&process.env.SMTP_FROM&&process.env.OTP_SECRET?.length>=32)}
+export async function sendOtp(email,code){if(!mailConfigured())throw new Error('Mail service is not configured');const transport=nodemailer.createTransport({host:process.env.SMTP_HOST,port:Number(process.env.SMTP_PORT||587),secure:Number(process.env.SMTP_PORT||587)===465,auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});await transport.sendMail({from:process.env.SMTP_FROM,to:email,subject:'STAR777 password reset OTP',text:'Your STAR777 password reset code is '+code+'. It expires in 10 minutes. If you did not request it, ignore this message.'})}
