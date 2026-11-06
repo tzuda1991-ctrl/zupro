@@ -254,3 +254,34 @@ html,body{background:#edf7ff;color:#142d4e}
 .demo-note{margin:11px 0 4px;font-size:10px}
 .wave-bottom{flex:1;min-height:48px;margin-top:8px;background:linear-gradient(170deg,transparent 0 43%,#ffcd38 44% 49%,#0878d0 51%,#02255f 87%);opacity:1}
 @media(max-height:780px){.auth-brand{padding-top:9px;padding-bottom:9px}.auth-crown{height:70px;margin-top:4px}.auth-crown .graphic{height:69px;width:79px}.auth-crown:before,.auth-crown:after{font-size:39px}.auth-laurel{padding:5px 11px;margin-top:4px}.auth-panel{padding:10px 13px}.auth-panel h2{margin-bottom:8px;padding:8px}.auth-panel .input-wrap{height:43px;margin:7px 0}.auth-options{margin:9px 0}.auth-panel .gold{min-height:44px}.auth-switch{margin-top:9px}.auth-switch span{margin-bottom:7px}.auth-switch button{min-height:39px}.auth-features{margin-top:8px}.demo-note{margin:5px 0 2px}}
+
+
+/* STAR777 global metallic glossy gold borders — v17 */
+:root{--gold-light:#fff3a4;--gold-bright:#ffd75d;--gold-mid:#d99a22;--gold-deep:#8b5412}
+.auth-panel,.auth-panel h2,.auth-panel .input-wrap,.auth-panel .gold,.auth-switch button,
+.hamb,.bell,.banner,.user-strip,.user-badge,.wallet-plus,.action,.ticker,.market,.market-icon,.view,
+.bottom,.bottom button.active,.drawer aside,.drawer-wallet,.drawer-wallet button,.menu-item,
+.pagehead,.results-heading,.result-card,.result-chart-icon,.result-view,.result-arrow,
+.market-hero,.market-game-card,.market-game-symbol,.card,.status,.auth-laurel{
+ border-color:var(--gold-mid)!important;
+ box-shadow:inset 0 1px 0 #fff4ba99,0 2px 7px #77501325,0 0 0 1px #fff0a555;
+}
+.auth-panel,.auth-panel h2,.auth-panel .gold,.auth-switch button,.banner,.market-hero,.result-card,.market-game-card,.market,.user-strip,.action,.bottom,.card{
+ border-style:solid!important;
+ border-width:2px!important;
+ border-image:none!important;
+}
+.auth-panel{border-width:3px!important;border-color:#f8c72b!important;box-shadow:inset 0 0 0 2px #fff7c7,0 5px 15px #93681b30!important}
+.auth-panel .input-wrap,.auth-switch button,.action,.market-game-card,.result-card,.market,.user-strip,.card{
+ box-shadow:inset 0 2px 1px #fff7ce,0 3px 9px #95691c29,0 0 0 1px #ffe69d80!important;
+}
+.auth-panel .gold,.view,.result-view,.wallet-plus,.bottom button.active{
+ border:2px solid #f8c334!important;
+ box-shadow:inset 0 2px 1px #fff3b16e,0 3px 8px #87571345,0 0 0 1px #ffe493!important;
+}
+.hamb,.bell,.market-icon,.result-chart-icon,.market-game-symbol,.user-badge,.auth-laurel{
+ border:2px solid #e8b343!important;
+ box-shadow:inset 0 2px 2px #fff1a780,0 3px 8px #8d611f42!important;
+}
+.bottom{border:2px solid #e6b64b!important;box-shadow:inset 0 2px 1px #fff9df,0 -3px 14px #8b611e2c!important}
+.market-game-card:focus-visible,.result-view:focus-visible,button:focus-visible{outline:2px solid #d9a127;outline-offset:2px}
