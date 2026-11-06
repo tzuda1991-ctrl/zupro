@@ -4,13 +4,14 @@ import android.content.Context
 import java.io.File
 
 class OfflineEngine(private val context: Context) {
-    companion object {
-        init { System.loadLibrary("zupro") }
-    }
-
+    companion object { init { System.loadLibrary("zupro") } }
     private external fun nativeLoadModel(path: String): Boolean
-    private external fun nativeGenerate(prompt: String, maxTokens: Int): String
+    private external fun nativeGenerateStreaming(prompt: String, maxTokens: Int, callback: TokenCallback): String
     private external fun nativeUnloadModel()
+
+    fun interface TokenCallback {
+        fun onToken(text: String)
+    }
 
     @Synchronized
     fun load(path: String): String {
@@ -20,8 +21,8 @@ class OfflineEngine(private val context: Context) {
     }
 
     @Synchronized
-    fun generate(prompt: String): String {
-        return nativeGenerate(prompt, 48)
+    fun generateStreaming(prompt: String, onToken: (String) -> Unit): String {
+        return nativeGenerateStreaming(prompt, 96, TokenCallback { token -> onToken(token) })
     }
 
     @Synchronized
