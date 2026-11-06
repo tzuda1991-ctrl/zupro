@@ -1,17 +1,23 @@
-# ZUPRO AI — Android Offline AI Starter
+# ZUPRO AI — Offline Android assistant
 
-Android/Kotlin starter for a 6 GB RAM Android phone.
+Kotlin Android chat interface with **llama.cpp** native inference through JNI.
 
-## Included
-- Native Android chat screen
-- GGUF model picker and local import
-- No network permission; model files remain on device
+## Build requirements
+- Android Studio, JDK 17, Android SDK 35
+- Android NDK and CMake 3.22.1
+- Internet access on the **build computer** to fetch llama.cpp sources at configure time
+- arm64 Android phone with about 6 GB RAM
 
-## Important limitation
-**Offline inference is not implemented yet.** The OfflineEngine class is a placeholder. The next development step is integrating llama.cpp using Android NDK/JNI for arm64-v8a.
+Open in Android Studio, sync, and build APK. A Gradle wrapper is not included yet. This project has **not been built or tested** in this environment.
 
-## Model suggestion
-Qwen2.5-1.5B-Instruct GGUF Q4_K_M (approximately 1 GB). Keep several GB free for import and working space.
+## Offline model
+Try Qwen2.5-1.5B-Instruct GGUF Q4_K_M. Download a trusted GGUF file, then import it through the app. Import duplicates the file into app storage; allow extra free disk space. Once installed and imported, the app does not request internet permission.
 
-## Build
-Open this repository in Android Studio with JDK 17 and Android SDK 35, sync Gradle, and build an APK. A Gradle wrapper and prebuilt APK are not included yet.
+## Native integration
+CMake fetches upstream llama.cpp. The JNI bridge loads a GGUF model, creates a context, tokenizes ChatML-formatted prompts, and samples responses on-device. The bridge uses llama.cpp's current C API; upstream API changes may require adjustments. Pin a tested upstream commit before production releases.
+
+## Limitations
+- Simple single-turn text generation, not a persistent chat history
+- No token streaming, cancellation, or model download UI
+- CPU inference may be slow and memory usage varies by phone
+- No prebuilt APK or CI build validation yet
