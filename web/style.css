@@ -196,3 +196,30 @@ html,body{background:#edf7ff;color:#142d4e}
 .demo-note{position:relative;z-index:1;color:#426a93;font-size:10px;text-align:center}
 .wave-bottom{height:60px;margin-top:10px;background:linear-gradient(172deg,transparent 0 29%,#f7c02d 30% 39%,#0367ba 40% 55%,#021e58 75%);opacity:1}
 @media(max-height:760px){.auth-brand{padding-top:14px;padding-bottom:10px}.auth-crown{margin-top:9px;height:85px}.auth-panel{padding:12px 15px}.auth-panel h2{margin-bottom:12px;padding:9px}.auth-panel .input-wrap{height:48px;margin:9px 0}.auth-features{margin-top:12px}.wave-bottom{height:35px}}
+
+
+/* Login polish v15: compact mobile proportions, aligned brand and subtle shadows */
+.app:has(.auth-shell){width:100%;max-width:540px;min-height:100dvh}
+.auth-shell{min-height:100dvh;background:linear-gradient(160deg,#b8e5ff 0%,#e6f5ff 58%,#c8e9ff 100%);padding-bottom:0}
+.auth-shell:before{top:-108px;height:184px;border-bottom-width:3px;box-shadow:0 4px 8px #0c3e8b22}
+.auth-brand{padding:14px 12px 13px}
+.auth-logo{font-size:clamp(29px,8.5vw,43px);gap:4px;letter-spacing:-1.4px}
+.auth-star{width:clamp(39px,11vw,56px);height:clamp(39px,11vw,56px)}
+.auth-crown{width:clamp(84px,24vw,116px);height:clamp(73px,20vw,98px);margin:9px auto 0}
+.auth-laurel{font-size:clamp(11px,3.3vw,15px);padding:6px 12px;margin:7px auto 0;border-width:1px;box-shadow:0 2px 5px #09447830}
+.auth-panel{margin:0 14px;padding:14px 15px 15px;border-width:2px;border-radius:27px;box-shadow:0 4px 11px #10558b20,inset 0 0 0 2px #fff}
+.auth-panel h2{font-size:clamp(17px,4.7vw,22px);padding:10px 7px;margin:0 0 13px;border-width:1px;border-radius:24px;box-shadow:0 2px 5px #0c4e9740}
+.auth-heading-person{font-size:13px}
+.auth-panel .input-wrap{height:52px;margin:10px 0;padding:0 13px;border-width:1.5px;border-radius:16px;box-shadow:0 2px 5px #1e6ba222;font-size:19px}
+.auth-panel .input-wrap input{font-size:15px}
+.auth-options{margin:13px 0 15px;font-size:clamp(11px,3vw,13px)}
+.auth-panel .gold{min-height:51px;border-width:1.5px;font-size:21px;box-shadow:0 3px 7px #16589135}
+.auth-switch{margin-top:15px;font-size:14px}
+.auth-switch span{margin-bottom:10px}
+.auth-switch button{min-height:45px;border-width:1.5px;font-size:14px;box-shadow:0 2px 5px #17588b20}
+.auth-features{margin:15px 12px 4px;gap:4px}
+.auth-features span{font-size:23px}
+.auth-features small{font-size:11px}
+.wave-bottom{height:36px;margin-top:4px}
+@media(max-width:380px){.auth-brand{padding-top:11px}.auth-panel{margin:0 10px;padding:12px}.auth-panel .input-wrap{height:47px}.auth-panel .gold{min-height:47px}.auth-switch button{min-height:42px}}
+@media(max-height:720px){.auth-crown{height:66px;width:82px;margin-top:4px}.auth-brand{padding-bottom:8px}.auth-panel{padding-top:10px;padding-bottom:10px}.auth-panel h2{margin-bottom:8px}.auth-panel .input-wrap{height:43px;margin:7px 0}.auth-options{margin:9px 0}.auth-panel .gold{min-height:43px}.auth-switch{margin-top:9px}.auth-switch button{min-height:39px}.auth-features{margin-top:8px}}
