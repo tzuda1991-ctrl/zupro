@@ -21,7 +21,7 @@ class OfflineEngine(private val context: Context) {
 
     @Synchronized
     fun generate(prompt: String): String {
-        return nativeGenerate(prompt, 160)
+        return nativeGenerate(prompt, 48)
     }
 
     @Synchronized
