@@ -59,7 +59,7 @@ class MainActivity : Activity() {
             }
         }
         root.addView(model, LinearLayout.LayoutParams(-1, dp(50)))
-        scroll = ScrollView(this).apply { fillViewport = true }
+        scroll = ScrollView(this).apply { isFillViewport = true }
         messages = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(18), 0, dp(16))
