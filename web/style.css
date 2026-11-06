@@ -123,3 +123,41 @@ html,body{max-width:100%;overflow-x:hidden}
 .results-waves{display:none}
 .app:has(.results-screen)>.bottom{position:fixed;box-sizing:border-box;left:50%;right:auto;bottom:calc(8px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);width:calc(100% - 24px);max-width:475px;margin:0;z-index:20}
 @media(max-height:690px){.results-heading{height:54px}.results-list{gap:6px;padding-top:7px}.result-card{height:68px}.result-chart-icon{flex-basis:43px;width:43px;height:43px}.result-chart-icon svg{width:27px;height:27px}.result-view{padding:7px 10px}}
+
+
+/* STAR777 approved theme: soft sky blue, deep navy and restrained gold */
+:root{color:#142d4e;background:#edf7ff}
+html,body{background:#edf7ff;color:#142d4e}
+.app,.app:has(.results-screen){background:linear-gradient(180deg,#f7fbff,#e8f4ff);box-shadow:0 0 20px #153a6412}
+.top{background:linear-gradient(90deg,#f8fcff,#e4f2ff);border-bottom-color:#bfd6eb}
+.hamb,.bell{background:#fff;border-color:#c9dced;color:#17385e}
+.brand,.brand i,.welcome h1,.section-title,.market h3,.market-heading strong,.pagehead,.results-heading h1{color:#102e51}
+.brand span,.brand sup{color:#c58a22}
+.balance,.user-strip,.action,.market,.card,.category,.result-card,.market-game-card{background:linear-gradient(145deg,#ffffff,#edf6ff);border-color:#c5d9eb;color:#173657;box-shadow:0 3px 9px #1d48751c}
+.user-details,.wallet-details,.market-main,.market-time,.market .nums,.times,.times strong,.result-card strong{color:#183b60}
+.hero-card,.banner,.market-hero{background:radial-gradient(ellipse at 50% 120%,#316ca4 0%,transparent 60%),linear-gradient(120deg,#091d3c,#143e70 58%,#0a2547);border-color:#c8a054;color:#fff;box-shadow:0 5px 16px #17395a38}
+.banner-title,.market-hero-center strong{color:#fff7e6}
+.market-icon,.market-game-symbol,.result-chart-icon,.user-badge,.bottom .center-crown,.drawer-avatar{background:linear-gradient(145deg,#24558b,#0c2c52);border-color:#d2aa58;color:#ffdc81}
+.action-icon,.action:nth-child(2) .action-icon,.action:nth-child(3) .action-icon,.action:nth-child(4) .action-icon{color:#184c80;background:#e4f1fc}
+.view,.gold,.wallet-plus,.drawer-wallet button,.result-view,.bottom button.active:not(.center-crown){background:linear-gradient(180deg,#194b7c,#0b2b51);color:#fff;border-color:#cfa75d;box-shadow:0 3px 8px #13385b35}
+.ticker,.market-heading span,.bottom,.input-wrap,.auth-panel,.auth-switch button{background:#f9fcff;border-color:#c7daeb;color:#17385c}
+.bottom{box-shadow:0 5px 18px #1c43632c}
+.bottom button{color:#3b6084}.bottom button.active{color:#e4ad43}
+.drawer{background:#071c37a8}.drawer aside{background:#f2f8ff;border-color:#a9c5e1}.drawer-header{background:linear-gradient(130deg,#0b2647,#20588c);color:#fff}
+.drawer-links,.menu-item{color:#17385c}.menu-item{border-color:#d1e1f0}.menu-item svg{color:#255a8e}
+.pagehead,.results-heading{background:#f2f9ff;border-color:#c9deef}
+.back,.link,.results-back,.results-heading-icon{color:#235889}
+.results-screen{background:linear-gradient(#f7fbff,#eaf5ff)}
+.result-card:after{background:linear-gradient(170deg,transparent 20%,#c4e3f980 45%,#f8d78a55 65%,transparent 85%)}
+.market-game-card{color:#173657}.market-game-card span:last-child{color:#173657}
+.market-wave,.results-waves,.wave-bottom,.drawer-wave{background:linear-gradient(175deg,transparent 15%,#c8e3fa 30%,#e8c77a 45%,#204e7c 70%)}
+.auth-shell{background:linear-gradient(#e6f4ff,#f9fcff 55%,#d9ebfa)}
+.auth-brand{background:radial-gradient(ellipse at 50% 40%,#fff,#e4f3ff)}
+.auth-logo,.auth-laurel,.auth-panel h2,.auth-title,.auth-switch{color:#102e51}
+.auth-panel{background:#f8fcff;box-shadow:0 -5px 15px #194a7520}
+.input-wrap input{color:#14385d}.input-wrap input::placeholder{color:#748da6}
+.auth-options,.auth-options button,.auth-switch button,.auth-features{color:#244f78}
+.field{background:#fff;border-color:#bfd4e8;color:#17385c}.field::placeholder{color:#8197ab}
+.muted,.small,.demo-note,.footer-note{color:#607e9b}
+.warning{background:#fff4db;color:#6c4b15}
+@media(max-width:360px){.brand{font-size:21px}.market-game-grid{gap:6px}}
