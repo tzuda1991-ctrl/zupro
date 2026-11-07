@@ -35,6 +35,21 @@ app.post('/api/auth/register',limit,db,wrap(async(req,res)=>{
  await sendOtp(address,code,'register');
  res.status(202).json({verificationRequired:true,message:'Verification OTP sent. Check your email.'});
 }));
+app.post('/api/auth/resend-registration-otp',limit,db,wrap(async(req,res)=>{
+ const email=req.body?.email;
+ if(!validEmail(email))return res.status(400).json({error:'Enter a valid email address'});
+ if(!mailConfigured())return res.status(503).json({error:'Email verification is unavailable'});
+ const address=email.trim().toLowerCase();
+ const {rows}=await pool.query("SELECT email,requested_at FROM pending_registrations WHERE email=$1",[address]);
+ if(!rows.length)return res.status(400).json({error:'Registration expired or not found. Please sign up again.'});
+ const elapsed=Date.now()-new Date(rows[0].requested_at).getTime();
+ if(elapsed<60000)return res.status(429).json({error:'Please wait '+Math.ceil((60000-elapsed)/1000)+' seconds before resending OTP',retryAfter:Math.ceil((60000-elapsed)/1000)});
+ const code=String(randomInt(0,1000000)).padStart(6,'0');
+ const updated=await pool.query("UPDATE pending_registrations SET code_hash=$2,expires_at=now()+interval '10 minutes',attempts_left=5,requested_at=now() WHERE email=$1 AND requested_at<=now()-interval '60 seconds' RETURNING email",[address,otpDigest(address,code)]);
+ if(!updated.rowCount)return res.status(429).json({error:'Please wait 60 seconds before resending OTP',retryAfter:60});
+ await sendOtp(address,code,'register');
+ res.json({message:'A new verification code has been sent.',retryAfter:60});
+}));
 app.post('/api/auth/verify-registration',limit,db,wrap(async(req,res)=>{
  const {email,otp}=req.body||{};
  if(!validEmail(email)||typeof otp!=='string'||!/^[0-9]{6}$/.test(otp))return res.status(400).json({error:'Enter email and 6 digit OTP'});
