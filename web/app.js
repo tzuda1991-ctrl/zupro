@@ -10,7 +10,7 @@ function showNotice(message){
  const success=/verified|welcome|success|sent|updated|created/i.test(String(message));
  const error=/error|invalid|failed|expired|unable|incorrect|already|wait|not configured|unexpected/i.test(String(message));
  overlay.querySelector('.star-notice-check').textContent=error?'!':success?'✓':'★';
- overlay.querySelector('#star-notice-title').textContent=error?'Please Check':success?'Success!':'STAR777 Notice';
+ overlay.querySelector('#star-notice-title').textContent=/if this email is registered/i.test(String(message))?'Request Received':error?'Please Check':success?'Success!':'STAR777 Notice';
  const close=()=>{overlay.remove();document.removeEventListener('keydown',onKey)};
  const onKey=e=>{if(e.key==='Escape'||e.key==='Enter'){e.preventDefault();close()}};
  overlay.querySelector('.star-notice-ok').addEventListener('click',close);
