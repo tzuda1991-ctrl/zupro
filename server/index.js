@@ -1,5 +1,5 @@
 import {randomInt,createHmac,timingSafeEqual} from 'node:crypto';
-import {sendOtp,mailConfigured} from './mail.js';
+import {sendOtp,sendWelcome,mailConfigured} from './mail.js';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -20,7 +20,49 @@ const db=(req,res,next)=>pool?next():res.status(503).json({error:'Database not c
 app.get('/api/health',(_req,res)=>res.json({ok:true,app:'STAR777',database:pool?'configured':'unconfigured'}));
 app.get('/api/markets',wrap(async(_req,res)=>{if(!pool)return res.json(fallback);const {rows}=await pool.query('SELECT id,name,opens AS open,closes AS close FROM markets WHERE enabled=true ORDER BY id');res.json(rows)}));
 app.use('/api',(req,res,next)=>{if(['GET','HEAD','OPTIONS'].includes(req.method))return next();const origin=req.get('origin');if(!origin)return next();try{if(new URL(origin).host===req.get('host'))return next()}catch{}res.status(403).json({error:'Invalid origin'})});
-app.post('/api/auth/register',limit,db,wrap(async(req,res)=>{const {username,password,mobile,email}=req.body||{};if(typeof username!=='string'||!/^[a-zA-Z0-9_]{3,24}$/.test(username)||typeof password!=='string'||password.length<12||password.length>128||(mobile!==undefined&&!/^[0-9]{10}$/.test(mobile))||!validEmail(email))return res.status(400).json({error:'Username 3-24 characters, password 12-128 characters, optional 10 digit mobile and valid email required'});const hash=await hashPassword(password);try{const {rows}=await pool.query('INSERT INTO users(username,mobile,password_hash,email) VALUES($1,$2,$3,$4) RETURNING id,username,role',[username.toLowerCase(),mobile||null,hash,email.trim().toLowerCase()]);await issueSession(res,rows[0].id);res.status(201).json({user:rows[0]})}catch(e){if(e.code==='23505')return res.status(409).json({error:'Username or mobile exists'});throw e}}));
+app.post('/api/auth/register',limit,db,wrap(async(req,res)=>{
+ const {username,password,mobile,email}=req.body||{};
+ if(typeof username!=='string'||!/^[a-zA-Z0-9_]{3,24}$/.test(username)||typeof password!=='string'||password.length<12||password.length>128||(mobile!==undefined&&!/^[0-9]{10}$/.test(mobile))||!validEmail(email))return res.status(400).json({error:'Enter a valid username, 12+ character password, mobile and email'});
+ if(!mailConfigured())return res.status(503).json({error:'Email verification is not configured'});
+ const user=username.toLowerCase(),address=email.trim().toLowerCase();
+ const {rows:existing}=await pool.query('SELECT 1 FROM users WHERE username=$1 OR lower(email)=$2 OR ($3::text IS NOT NULL AND mobile=$3) LIMIT 1',[user,address,mobile||null]);
+ if(existing.length)return res.status(409).json({error:'Username, mobile or email already registered'});
+ const {rows:recent}=await pool.query("SELECT 1 FROM pending_registrations WHERE email=$1 AND requested_at>now()-interval '60 seconds'",[address]);
+ if(recent.length)return res.status(429).json({error:'Please wait 60 seconds before requesting another OTP'});
+ const code=String(randomInt(0,1000000)).padStart(6,'0');
+ const hash=await hashPassword(password);
+ await pool.query("INSERT INTO pending_registrations(email,username,mobile,password_hash,code_hash,expires_at,attempts_left,requested_at) VALUES($1,$2,$3,$4,$5,now()+interval '10 minutes',5,now()) ON CONFLICT(email) DO UPDATE SET username=excluded.username,mobile=excluded.mobile,password_hash=excluded.password_hash,code_hash=excluded.code_hash,expires_at=excluded.expires_at,attempts_left=5,requested_at=now()",[address,user,mobile||null,hash,otpDigest(address,code)]);
+ await sendOtp(address,code,'register');
+ res.status(202).json({verificationRequired:true,message:'Verification OTP sent. Check your email.'});
+}));
+app.post('/api/auth/verify-registration',limit,db,wrap(async(req,res)=>{
+ const {email,otp}=req.body||{};
+ if(!validEmail(email)||typeof otp!=='string'||!/^[0-9]{6}$/.test(otp))return res.status(400).json({error:'Enter email and 6 digit OTP'});
+ const address=email.trim().toLowerCase(),client=await pool.connect();
+ let user;
+ try{
+  await client.query('BEGIN');
+  const {rows}=await client.query('SELECT * FROM pending_registrations WHERE email=$1 FOR UPDATE',[address]);
+  const pending=rows[0];
+  if(!pending||pending.attempts_left<=0||new Date(pending.expires_at)<=new Date()){await client.query('ROLLBACK');return res.status(400).json({error:'Invalid or expired OTP'})}
+  const expected=Buffer.from(pending.code_hash,'hex'),actual=Buffer.from(otpDigest(address,otp),'hex');
+  if(!timingSafeEqual(expected,actual)){
+   await client.query('UPDATE pending_registrations SET attempts_left=attempts_left-1 WHERE email=$1',[address]);
+   await client.query('COMMIT');return res.status(400).json({error:'Invalid or expired OTP'});
+  }
+  const result=await client.query('INSERT INTO users(username,mobile,password_hash,email) VALUES($1,$2,$3,$4) RETURNING id,username,role',[pending.username,pending.mobile,pending.password_hash,address]);
+  user=result.rows[0];
+  await client.query('DELETE FROM pending_registrations WHERE email=$1',[address]);
+  await client.query('COMMIT');
+ }catch(error){
+  await client.query('ROLLBACK');
+  if(error.code==='23505')return res.status(409).json({error:'Username, mobile or email already registered'});
+  throw error;
+ }finally{client.release()}
+ await issueSession(res,user.id);
+ sendWelcome(address,user.username).catch(err=>console.error('Welcome email failed',err.message));
+ res.status(201).json({user,message:'Email verified. Account created.'});
+}));
 app.post('/api/auth/login',limit,db,wrap(async(req,res)=>{const {username,password}=req.body||{};if(typeof username!=='string'||typeof password!=='string'||username.length>100||password.length>128)return res.status(400).json({error:'Invalid credentials'});const {rows}=await pool.query('SELECT id,username,role,password_hash FROM users WHERE username=$1',[username.toLowerCase()]);if(!rows.length||!await verifyPassword(password,rows[0].password_hash))return res.status(401).json({error:'Invalid credentials'});await issueSession(res,rows[0].id);res.json({user:{id:rows[0].id,username:rows[0].username,role:rows[0].role}})}));
 
 app.post('/api/auth/forgot-password',resetLimit,db,wrap(async(req,res)=>{
