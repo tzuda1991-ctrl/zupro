@@ -285,3 +285,21 @@ html,body{background:#edf7ff;color:#142d4e}
 }
 .bottom{border:2px solid #e6b64b!important;box-shadow:inset 0 2px 1px #fff9df,0 -3px 14px #8b611e2c!important}
 .market-game-card:focus-visible,.result-view:focus-visible,button:focus-visible{outline:2px solid #d9a127;outline-offset:2px}
+
+
+/* STAR777 branded popup; isolated from existing blue + gold screens */
+.star-notice-overlay{position:fixed;inset:0;z-index:99999;background:rgba(2,12,37,.72);backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;padding:20px;animation:starNoticeFade .2s ease}
+.star-notice{width:min(100%,410px);overflow:hidden;border:3px solid #f9ca4b;border-radius:25px;background:linear-gradient(155deg,#fffdf4,#e8f5ff);box-shadow:0 0 0 2px #fff2b6,0 22px 65px #020b30a8,inset 0 2px 2px #fff;animation:starNoticePop .26s ease-out;color:#073268;text-align:center}
+.star-notice-top{padding:19px 16px 12px;background:linear-gradient(120deg,#0065c4,#002257 70%,#001b49);border-bottom:3px solid #dba332}
+.star-notice-logo{font-family:Outfit,'DM Sans',sans-serif;font-size:26px;font-weight:900;color:#ffd45b;letter-spacing:.3px;text-shadow:0 2px 3px #0006}
+.star-notice-logo span{color:#fff}.star-notice-logo b{color:#ffd45b}
+.star-notice-crown{color:#ffcd4a;font-size:30px;line-height:1.15;text-shadow:0 2px 6px #0008}
+.star-notice-content{padding:20px 23px 25px}
+.star-notice-check{width:57px;height:57px;margin:0 auto 12px;display:grid;place-items:center;border-radius:50%;border:3px solid #e9b43a;background:linear-gradient(150deg,#fff6d4,#f6d269);color:#0b3a77;font-size:29px;font-weight:900;box-shadow:0 3px 11px #b5843845}
+.star-notice h2{margin:0 0 9px;font:900 24px Outfit,'DM Sans',sans-serif;color:#053571}
+.star-notice p{margin:0 0 22px;font-size:15px;line-height:1.55;color:#25466f;overflow-wrap:anywhere;white-space:pre-wrap}
+.star-notice-ok{width:100%;min-height:50px;border:2px solid #f7c83c!important;border-radius:30px;background:linear-gradient(#087dd7,#003477 90%);color:#fff;font:800 17px Outfit,'DM Sans',sans-serif;box-shadow:inset 0 2px 1px #fff6c288,0 4px 12px #004d9150}
+.star-notice-ok:focus-visible{outline:3px solid #d5a32d;outline-offset:3px}
+@keyframes starNoticeFade{from{opacity:0}to{opacity:1}}
+@keyframes starNoticePop{from{opacity:0;transform:translateY(14px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(prefers-reduced-motion:reduce){.star-notice-overlay,.star-notice{animation:none}}
