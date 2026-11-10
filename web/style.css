@@ -339,3 +339,10 @@ html,body{background:#edf7ff;color:#142d4e}
 .auth-shell:before{top:-74px!important}
 .auth-brand{padding-top:12px!important}
 @media(max-height:720px){.auth-shell{padding-top:calc(30px + env(safe-area-inset-top,0px))!important}}
+
+/* v20: refined single-crown auth branding */
+.auth-crown{width:112px!important;height:84px!important;margin:7px auto 3px!important;display:flex!important;align-items:center;justify-content:center}
+.auth-crown:before,.auth-crown:after{content:none!important;display:none!important}
+.auth-crown .graphic{width:104px!important;height:80px!important;filter:drop-shadow(0 3px 2px #86521145)}
+.auth-crown .graphic svg{width:100%!important;height:100%!important;object-fit:contain}
+.auth-laurel{margin-top:5px!important}
