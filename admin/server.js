@@ -62,7 +62,7 @@ app.patch('/api/markets/:id',manageLimit,auth,can('manage_markets'),wrap(async(r
 const panaOrder='1234567890';
 const validPana=value=>typeof value==='string'&&/^[0-9]{3}$/.test(value)&&value===value.split('').sort((a,b)=>panaOrder.indexOf(a)-panaOrder.indexOf(b)).join('');
 const panaAnk=value=>String([...value].reduce((n,d)=>n+Number(d),0)%10);
-const formatResult=(open,close)=>open+' - '+(close?panaAnk(open)+panaAnk(close):'**')+' - '+(close||'***');
+const formatResult=(open,close)=>open+' - '+(close?panaAnk(open)+panaAnk(close):panaAnk(open)+'*')+' - '+(close||'***');
 app.post('/api/results',manageLimit,auth,can('manage_results'),wrap(async(req,res)=>{
  const {marketId,date,result,phase}=req.body||{};
  if(!idOf(marketId)||typeof date!=='string'||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date)||Number.isNaN(Date.parse(date))||!['open','close'].includes(phase)||typeof result!=='string'||!validPana(result))return res.status(400).json({error:'Invalid Pana. Use the standard 220 Pana chart (e.g. 139, 188, 780; not 198, 187, 078).'});
