@@ -20,6 +20,12 @@ const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
 const db=(req,res,next)=>pool?next():res.status(503).json({error:'Database not configured'});
 app.get('/api/health',(_req,res)=>res.json({ok:true,app:'STAR777',database:pool?'configured':'unconfigured'}));
 const pushReady=Boolean(process.env.VAPID_PUBLIC_KEY&&process.env.VAPID_PRIVATE_KEY&&process.env.VAPID_SUBJECT);
+app.post('/api/fcm/register',db,authenticate,wrap(async(req,res)=>{
+ const token=req.body?.token;
+ if(typeof token!=='string'||token.length<50||token.length>4096||!/^[A-Za-z0-9_:\-]+$/.test(token))return res.status(400).json({error:'Invalid FCM token'});
+ await pool.query('INSERT INTO fcm_devices(user_id,token) VALUES($1,$2) ON CONFLICT(token) DO UPDATE SET user_id=excluded.user_id',[req.user.id,token]);
+ res.json({ok:true});
+}));
 app.get('/api/push/config',(_req,res)=>res.json({enabled:pushReady,publicKey:pushReady?process.env.VAPID_PUBLIC_KEY:null}));
 app.post('/api/push/subscribe',db,authenticate,wrap(async(req,res)=>{
  if(!pushReady)return res.status(503).json({error:'Push notifications not configured'});
