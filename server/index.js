@@ -16,6 +16,8 @@ const validEmail=e=>typeof e==='string'&&e.length<=254&&/^[^\s@]+@[^\s@]+\.[^\s@
 const otpDigest=(id,code)=>createHmac('sha256',process.env.OTP_SECRET).update(String(id)+':'+code).digest('hex');
 const limit=rateLimit({windowMs:900000,limit:15,standardHeaders:'draft-7',legacyHeaders:false});
 const fallback=[['LAXMI MORNING','10:00 AM','12:00 PM'],['KARNATAKA DAY','10:15 AM','11:15 AM'],['MILAN MORNING','10:30 AM','11:30 AM'],['SRIDEVI','11:00 AM','12:00 PM'],['MAIN BAZAR DAY','01:00 PM','03:00 PM'],['SUPREME NIGHT','08:00 PM','10:00 PM']].map(([name,open,close])=>({name,open,close}));
+const timeMinutes=t=>{const m=/^(\d{1,2}):(\d{2}) (AM|PM)$/.exec(t||'');return m?(Number(m[1])%12+(m[3]==='PM'?12:0))*60+Number(m[2]):null};
+const marketStatus=(m,now,declared)=>{if(!m.enabled||m.status_override==='holiday')return 'HOLIDAY';if(m.status_override==='closed')return 'CLOSED';const open=timeMinutes(m.open),close=timeMinutes(m.close),result=timeMinutes(m.result_time||m.close);if(open===null||close===null||result===null)return 'CLOSED';if(declared)return 'RESULT';const cutoff=Math.min(close,result-10);if(now<open)return 'SOON';if(now<cutoff)return 'OPEN';if(now<result)return 'WAITING';return 'PENDING'};
 const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
 const db=(req,res,next)=>pool?next():res.status(503).json({error:'Database not configured'});
 app.get('/api/health',(_req,res)=>res.json({ok:true,app:'STAR777',database:pool?'configured':'unconfigured'}));
@@ -35,7 +37,7 @@ app.post('/api/push/subscribe',db,authenticate,wrap(async(req,res)=>{
  res.json({ok:true});
 }));
 app.post('/api/push/unsubscribe',db,authenticate,wrap(async(req,res)=>{const endpoint=req.body?.endpoint;if(typeof endpoint!=='string')return res.status(400).json({error:'Invalid endpoint'});await pool.query('DELETE FROM push_subscriptions WHERE endpoint=$1 AND user_id=$2',[endpoint,req.user.id]);res.json({ok:true})}));
-app.get('/api/markets',wrap(async(_req,res)=>{if(!pool)return res.json(fallback);const {rows}=await pool.query('SELECT id,name,opens AS open,closes AS close FROM markets WHERE enabled=true ORDER BY id');res.json(rows)}));
+app.get('/api/markets',wrap(async(_req,res)=>{if(!pool)return res.json(fallback);const now=new Date();const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hourCycle:'h23',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now);const part=k=>parts.find(x=>x.type===k)?.value;const minutes=Number(part('hour'))*60+Number(part('minute'));const today=`${part('year')}-${part('month')}-${part('day')}`;const {rows}=await pool.query("SELECT m.id,m.name,m.opens AS open,m.closes AS close,m.result_time,m.status_override,m.enabled,EXISTS(SELECT 1 FROM results r WHERE r.market_id=m.id AND r.result_date=$1 AND r.close_result IS NOT NULL) AS declared FROM markets m WHERE m.enabled=true ORDER BY m.id",[today]);res.json(rows.map(m=>({...m,status:marketStatus(m,minutes,m.declared),betting_open:marketStatus(m,minutes,m.declared)==='OPEN',betting_cutoff_minutes:Math.min(timeMinutes(m.close),timeMinutes(m.result_time||m.close)-10)})))}));
 app.use('/api',(req,res,next)=>{if(['GET','HEAD','OPTIONS'].includes(req.method))return next();const origin=req.get('origin');if(!origin)return next();try{if(new URL(origin).host===req.get('host'))return next()}catch{}res.status(403).json({error:'Invalid origin'})});
 app.post('/api/auth/register',limit,db,wrap(async(req,res)=>{
  const {username,password,mobile,email}=req.body||{};
