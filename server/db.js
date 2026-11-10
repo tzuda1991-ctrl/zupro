@@ -22,6 +22,19 @@ export async function initDb(){
  await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users (lower(email)) WHERE email IS NOT NULL");
  await pool.query(`CREATE TABLE IF NOT EXISTS password_reset_otps(user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,code_hash TEXT NOT NULL,expires_at TIMESTAMPTZ NOT NULL,attempts_left INT NOT NULL DEFAULT 5,requested_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
  await pool.query(`CREATE TABLE IF NOT EXISTS pending_registrations(email TEXT PRIMARY KEY,username TEXT NOT NULL,mobile TEXT,password_hash TEXT NOT NULL,code_hash TEXT NOT NULL,expires_at TIMESTAMPTZ NOT NULL,attempts_left INTEGER NOT NULL DEFAULT 5,requested_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
+ await pool.query(`CREATE TABLE IF NOT EXISTS payment_requests(
+ id BIGSERIAL PRIMARY KEY,
+ user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ method TEXT NOT NULL CHECK(method IN ('upi','qr','bank')),
+ amount_paise BIGINT NOT NULL CHECK(amount_paise>0),
+ utr TEXT NOT NULL,
+ proof_data TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ reviewed_at TIMESTAMPTZ,
+ reviewed_by BIGINT REFERENCES users(id)
+ )`);
+ await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS payment_requests_utr_unique ON payment_requests(lower(utr))");
  const markets=[['LAXMI MORNING','10:00 AM','12:00 PM'],['KARNATAKA DAY','10:15 AM','11:15 AM'],['MILAN MORNING','10:30 AM','11:30 AM'],['SRIDEVI','11:00 AM','12:00 PM'],['MAIN BAZAR DAY','01:00 PM','03:00 PM'],['SUPREME NIGHT','08:00 PM','10:00 PM']];
  for(const [name,opens,closes] of markets)await pool.query('INSERT INTO markets(name,opens,closes) VALUES($1,$2,$3) ON CONFLICT(name) DO NOTHING',[name,opens,closes]);
 }
