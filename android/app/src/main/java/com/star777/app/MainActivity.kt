@@ -8,6 +8,8 @@ import android.os.Bundle
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebSettings
+import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.content.Intent
 import android.net.Uri
@@ -22,6 +24,8 @@ class MainActivity : Activity() {
         web = WebView(this)
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
+        web.settings.cacheMode = WebSettings.LOAD_NO_CACHE
+        CookieManager.getInstance().setAcceptCookie(true)
         web.addJavascriptInterface(object {
             @JavascriptInterface fun registerPush() { runOnUiThread { registerPushToken() } }
         }, "Star777Android")
@@ -39,6 +43,7 @@ class MainActivity : Activity() {
         }
         web.webChromeClient = WebChromeClient()
         setContentView(web)
+        web.clearCache(true)
         web.loadUrl(url)
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 700)
