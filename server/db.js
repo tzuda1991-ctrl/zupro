@@ -13,13 +13,7 @@ export async function initDb(){
  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT");
  await pool.query("ALTER TABLE results ADD COLUMN IF NOT EXISTS open_result TEXT");
  await pool.query("ALTER TABLE results ADD COLUMN IF NOT EXISTS close_result TEXT");
- await pool.query("UPDATE results SET open_result=result_text WHERE open_result IS NULL AND close_result IS NULL AND result_text ~ '^[0-9]{3}
- await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users (lower(email)) WHERE email IS NOT NULL");
- await pool.query(`CREATE TABLE IF NOT EXISTS password_reset_otps(user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,code_hash TEXT NOT NULL,expires_at TIMESTAMPTZ NOT NULL,attempts_left INT NOT NULL DEFAULT 5,requested_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
- await pool.query(`CREATE TABLE IF NOT EXISTS pending_registrations(email TEXT PRIMARY KEY,username TEXT NOT NULL,mobile TEXT,password_hash TEXT NOT NULL,code_hash TEXT NOT NULL,expires_at TIMESTAMPTZ NOT NULL,attempts_left INTEGER NOT NULL DEFAULT 5,requested_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
- const markets=[['LAXMI MORNING','10:00 AM','12:00 PM'],['KARNATAKA DAY','10:15 AM','11:15 AM'],['MILAN MORNING','10:30 AM','11:30 AM'],['SRIDEVI','11:00 AM','12:00 PM'],['MAIN BAZAR DAY','01:00 PM','03:00 PM'],['SUPREME NIGHT','08:00 PM','10:00 PM']];
- for(const [name,opens,closes] of markets)await pool.query('INSERT INTO markets(name,opens,closes) VALUES($1,$2,$3) ON CONFLICT(name) DO NOTHING',[name,opens,closes]);
-}");
+ await pool.query("UPDATE results SET open_result=result_text WHERE open_result IS NULL AND close_result IS NULL AND result_text ~ '^[0-9]{3}$'");
  await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users (lower(email)) WHERE email IS NOT NULL");
  await pool.query(`CREATE TABLE IF NOT EXISTS password_reset_otps(user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,code_hash TEXT NOT NULL,expires_at TIMESTAMPTZ NOT NULL,attempts_left INT NOT NULL DEFAULT 5,requested_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
  await pool.query(`CREATE TABLE IF NOT EXISTS pending_registrations(email TEXT PRIMARY KEY,username TEXT NOT NULL,mobile TEXT,password_hash TEXT NOT NULL,code_hash TEXT NOT NULL,expires_at TIMESTAMPTZ NOT NULL,attempts_left INTEGER NOT NULL DEFAULT 5,requested_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
