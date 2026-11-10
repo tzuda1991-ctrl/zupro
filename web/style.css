@@ -346,3 +346,19 @@ html,body{background:#edf7ff;color:#142d4e}
 .auth-crown .graphic{width:104px!important;height:80px!important;filter:drop-shadow(0 3px 2px #86521145)}
 .auth-crown .graphic svg{width:100%!important;height:100%!important;object-fit:contain}
 .auth-laurel{margin-top:5px!important}
+
+/* v27: approved crown-free STAR777 premium authentication header */
+.auth-shell{padding-top:calc(20px + env(safe-area-inset-top,0px))!important;background:linear-gradient(180deg,#071f4b 0%,#073577 24%,#c4e7ff 42%,#e8f6ff 86%,#063b80 100%)!important}
+.auth-brand{padding:18px 12px 20px!important;background:radial-gradient(ellipse at 50% 10%,#11549a 0%,#061c49 78%)!important;border-bottom:3px solid #f6c742!important;border-radius:0 0 50% 9%!important;position:relative!important}
+.auth-logo-premium{height:110px!important;position:relative!important;display:flex!important;align-items:center!important;justify-content:center!important;isolation:isolate!important;font-size:clamp(39px,10vw,61px)!important;white-space:nowrap!important;letter-spacing:-2px!important;filter:drop-shadow(0 4px 3px #0007)}
+.auth-logo-premium i{position:relative!important;z-index:2!important;font-style:italic!important;font-weight:900!important;color:#fff!important;-webkit-text-stroke:.65px #dca82c!important;text-shadow:0 2px #98681e,0 4px 7px #0008!important}
+.auth-logo-premium i b{color:#ffcc38!important;-webkit-text-stroke:.7px #bd7c06!important;text-shadow:0 2px #a76c06,0 4px 7px #0008!important}
+.premium-star{position:absolute!important;top:-11px!important;left:45%!important;z-index:3!important;font-size:60px!important;line-height:1!important;color:#ffcf35!important;-webkit-text-stroke:1px #bd7b08!important;text-shadow:0 2px 0 #99620b,0 4px 12px #f5be4180!important;transform:rotate(-8deg)}
+.premium-orbit{position:absolute!important;left:15%!important;right:13%!important;bottom:11px!important;height:27px!important;border-bottom:3px solid #ffca3c!important;border-radius:50%!important;transform:rotate(-4deg)!important;filter:drop-shadow(0 0 5px #ffc33c)!important;z-index:1!important}
+.auth-laurel{margin:5px auto 0!important;max-width:90%!important;padding:7px 12px!important;font-size:clamp(11px,3vw,15px)!important}
+.auth-panel{margin:14px 12px 0!important;background:linear-gradient(#fff,#e9f5ff)!important;border:3px solid #f3c638!important;border-radius:28px!important;padding:15px 17px 18px!important}
+.auth-panel h2{margin-bottom:14px!important}
+.auth-panel .input-wrap{border-radius:35px!important}
+.auth-panel .gold{border-radius:35px!important}
+.auth-switch button{border-radius:30px!important}
+@media(max-width:370px){.auth-logo-premium{font-size:37px!important}.premium-star{font-size:51px!important}.auth-panel{padding:13px 12px!important}}
