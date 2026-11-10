@@ -10,7 +10,7 @@ import path from 'node:path';
 import {pool,initDb} from './db.js';
 import {hashPassword,verifyPassword,issueSession,authenticate,adminOnly,tokenHash} from './security.js';
 const app=express(),root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../web');
-app.disable('x-powered-by');app.set('trust proxy',1);app.use(helmet({contentSecurityPolicy:false}));app.use(express.json({limit:'16kb'}));app.use(cookieParser());
+app.disable('x-powered-by');app.set('trust proxy',1);app.use(helmet({contentSecurityPolicy:false}));app.use(express.json({limit:'2mb'}));app.use(cookieParser());
 const resetLimit=rateLimit({windowMs:15*60*1000,limit:5,standardHeaders:'draft-7',legacyHeaders:false});
 const validEmail=e=>typeof e==='string'&&e.length<=254&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 const otpDigest=(id,code)=>createHmac('sha256',process.env.OTP_SECRET).update(String(id)+':'+code).digest('hex');
@@ -146,6 +146,18 @@ app.post('/api/auth/reset-password',resetLimit,db,wrap(async(req,res)=>{
 app.get('/api/me',db,authenticate,(req,res)=>res.json({user:req.user}));
 app.post('/api/auth/logout',db,authenticate,wrap(async(req,res)=>{await pool.query('DELETE FROM sessions WHERE id_hash=$1',[tokenHash(req.cookies.star777_session)]);res.clearCookie('star777_session',{path:'/'});res.json({ok:true})}));
 app.get('/api/results',db,wrap(async(req,res)=>{const {rows}=await pool.query('SELECT r.id,m.name AS market,r.result_date,r.result_text,r.open_result,r.close_result FROM results r JOIN markets m ON m.id=r.market_id ORDER BY r.result_date DESC LIMIT 100');res.json(rows)}));
+const paymentLimit=rateLimit({windowMs:15*60*1000,limit:5,standardHeaders:'draft-7',legacyHeaders:false});
+app.post('/api/payment-requests',paymentLimit,db,authenticate,wrap(async(req,res)=>{
+ const {method,amount,utr,proof}=req.body||{};
+ if(!['upi','qr','bank'].includes(method)||typeof amount!=='number'||!Number.isFinite(amount)||amount<1||amount>100000||Math.round(amount*100)!==amount*100)return res.status(400).json({error:'Invalid amount or method'});
+ if(typeof utr!=='string'||!/^[A-Za-z0-9-]{6,40}$/.test(utr))return res.status(400).json({error:'Valid UTR required'});
+ if(typeof proof!=='string'||!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(proof)||proof.length>1400000)return res.status(400).json({error:'Valid image proof required (max 1MB)'});
+ try{const {rows}=await pool.query('INSERT INTO payment_requests(user_id,method,amount_paise,utr,proof_data) VALUES($1,$2,$3,$4,$5) RETURNING id,status,created_at',[req.user.id,method,Math.round(amount*100),utr,proof]);res.status(201).json(rows[0])}
+ catch(e){if(e.code==='23505')return res.status(409).json({error:'Transaction reference already submitted'});throw e}
+}));
+app.get('/api/payment-requests',db,authenticate,wrap(async(req,res)=>{
+ const {rows}=await pool.query('SELECT id,method,amount_paise,utr,status,created_at,reviewed_at FROM payment_requests WHERE user_id=$1 ORDER BY id DESC LIMIT 100',[req.user.id]);res.json(rows)
+}));
 app.get('/api/wallet',db,authenticate,wrap(async(req,res)=>{const {rows}=await pool.query('SELECT COALESCE(SUM(delta),0)::int AS balance FROM demo_ledger WHERE user_id=$1',[req.user.id]);res.json({currency:'DEMO_POINTS',balance:rows[0].balance})}));
 app.get('/api/transactions',db,authenticate,wrap(async(req,res)=>{const {rows}=await pool.query('SELECT id,delta,note,created_at FROM demo_ledger WHERE user_id=$1 ORDER BY id DESC LIMIT 100',[req.user.id]);res.json(rows)}));
 app.get('/api/notifications',db,authenticate,wrap(async(req,res)=>{const {rows}=await pool.query('SELECT id,title,message,created_at FROM notifications WHERE user_id=$1 OR user_id IS NULL ORDER BY id DESC LIMIT 50',[req.user.id]);res.json(rows)}));
