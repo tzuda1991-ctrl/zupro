@@ -404,3 +404,8 @@ html{scroll-padding-top:calc(64px + var(--star-safe-top));scroll-padding-bottom:
 #app>.app:has(.bottom) .results-list{padding-bottom:var(--star-content-bottom)!important}
 #app>.app:has(.bottom) .pagehead{box-sizing:border-box;min-height:58px;display:flex;align-items:center}
 @media(max-height:690px){#app>.app:has(.bottom) .top{min-height:48px}}
+
+/* Quick result refresh beside notifications */
+.top .refresh-top{display:grid;place-items:center;width:43px;height:43px;margin-left:auto;margin-right:8px;border:2px solid #e9b947;border-radius:14px;background:#fff;color:#15375c;font-size:31px;line-height:1;cursor:pointer;box-shadow:0 2px 6px #17375b22}
+.top .refresh-top.refreshing{animation:result-spin .75s linear infinite}
+@keyframes result-spin{to{transform:rotate(360deg)}}
