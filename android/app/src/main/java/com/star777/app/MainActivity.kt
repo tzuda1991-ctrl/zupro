@@ -8,6 +8,9 @@ import android.os.Bundle
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebResourceRequest
+import android.content.Intent
+import android.net.Uri
 import android.webkit.WebChromeClient
 import com.google.firebase.messaging.FirebaseMessaging
 
@@ -23,6 +26,12 @@ class MainActivity : Activity() {
             @JavascriptInterface fun registerPush() { runOnUiThread { registerPushToken() } }
         }, "Star777Android")
         web.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val target = request?.url ?: return true
+                if (target.scheme == "https" && target.host == "zupro-production.up.railway.app") return false
+                if (target.scheme == "https" || target.scheme == "mailto") startActivity(Intent(Intent.ACTION_VIEW, target))
+                return true
+            }
             override fun onPageFinished(view: WebView?, loadedUrl: String?) {
                 super.onPageFinished(view, loadedUrl)
                 if (loadedUrl?.startsWith(url) == true) registerPushToken()
