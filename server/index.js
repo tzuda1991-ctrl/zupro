@@ -1,5 +1,5 @@
 import {randomInt,createHmac,timingSafeEqual} from 'node:crypto';
-import {sendOtp,sendWelcome,mailConfigured} from './mail.js';
+import {sendOtp,sendWelcome,sendUsernameReminder,mailConfigured} from './mail.js';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -78,8 +78,17 @@ app.post('/api/auth/verify-registration',limit,db,wrap(async(req,res)=>{
  sendWelcome(address,user.username).catch(err=>console.error('Welcome email failed',err.message));
  res.status(201).json({user,message:'Email verified. Account created.'});
 }));
-app.post('/api/auth/login',limit,db,wrap(async(req,res)=>{const {username,password}=req.body||{};if(typeof username!=='string'||typeof password!=='string'||username.length>100||password.length>128)return res.status(400).json({error:'Invalid credentials'});const {rows}=await pool.query('SELECT id,username,role,password_hash FROM users WHERE username=$1',[username.toLowerCase()]);if(!rows.length||!await verifyPassword(password,rows[0].password_hash))return res.status(401).json({error:'Invalid credentials'});await issueSession(res,rows[0].id);res.json({user:{id:rows[0].id,username:rows[0].username,role:rows[0].role}})}));
+app.post('/api/auth/login',limit,db,wrap(async(req,res)=>{const {username,password}=req.body||{};if(typeof username!=='string'||typeof password!=='string'||username.length>254||password.length>128)return res.status(400).json({error:'Invalid credentials'});const identifier=username.trim().toLowerCase();if(!identifier)return res.status(401).json({error:'Invalid credentials'});const {rows}=await pool.query('SELECT id,username,role,password_hash FROM users WHERE username=$1 OR lower(email)=$1 OR (mobile=$1 AND $1 ~ \'^[0-9]{10}$\') LIMIT 2',[identifier]);if(rows.length!==1||!await verifyPassword(password,rows[0].password_hash))return res.status(401).json({error:'Invalid credentials'});await issueSession(res,rows[0].id);res.json({user:{id:rows[0].id,username:rows[0].username,role:rows[0].role}})}));
 
+app.post('/api/auth/forgot-username',resetLimit,db,wrap(async(req,res)=>{
+ const email=req.body?.email;
+ if(!validEmail(email))return res.status(400).json({error:'Enter a valid email address'});
+ if(!mailConfigured())return res.status(503).json({error:'Email recovery is not configured'});
+ const generic={message:'If this email is registered, your username will be emailed.'};
+ const {rows}=await pool.query('SELECT username,email FROM users WHERE lower(email)=$1',[email.trim().toLowerCase()]);
+ if(rows.length)await sendUsernameReminder(rows[0].email,rows[0].username);
+ res.json(generic);
+}));
 app.post('/api/auth/forgot-password',resetLimit,db,wrap(async(req,res)=>{
  const email=req.body?.email;
  if(!validEmail(email))return res.status(400).json({error:'Enter a valid email address'});
