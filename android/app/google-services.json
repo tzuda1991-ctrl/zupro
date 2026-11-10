@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "967217746788",
+    "project_id": "star777-ac918",
+    "storage_bucket": "star777-ac918.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:967217746788:android:11714a5ecde172e0522071",
+        "android_client_info": {
+          "package_name": "com.star777.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBhNh99e0piy9Hj8C2ESfTSFa-DL4tVwZ4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
