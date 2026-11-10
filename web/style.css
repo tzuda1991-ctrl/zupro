@@ -333,3 +333,9 @@ html,body{background:#edf7ff;color:#142d4e}
 .wave-bottom{min-height:36px!important}
 @media(max-width:360px){.auth-panel{margin:0 8px!important;padding:11px 12px!important}.auth-options button{font-size:11px!important}.auth-options>span{max-width:60%}}
 @media(max-height:700px){.auth-crown{height:52px!important}.auth-crown .graphic{height:51px!important}.auth-panel h2{margin-bottom:7px!important}.auth-panel .input-wrap{height:42px!important;margin:7px 0!important}.auth-features{margin-top:8px!important}}
+
+/* v19: keep complete STAR777 logo below mobile top safe area */
+.auth-shell{padding-top:calc(42px + env(safe-area-inset-top,0px))!important}
+.auth-shell:before{top:-74px!important}
+.auth-brand{padding-top:12px!important}
+@media(max-height:720px){.auth-shell{padding-top:calc(30px + env(safe-area-inset-top,0px))!important}}
