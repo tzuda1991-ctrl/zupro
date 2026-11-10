@@ -70,7 +70,9 @@ app.post('/api/results',manageLimit,auth,can('manage_results'),wrap(async(req,re
  try{await client.query('BEGIN');const {rows:existing}=await client.query('SELECT id,open_result,close_result FROM results WHERE market_id=$1 AND result_date=$2 FOR UPDATE',[marketId,date]);
  let row=existing[0];if(!row){const created=await client.query("INSERT INTO results(market_id,result_date,result_text,open_result,close_result) VALUES($1,$2,'',$3,$4) ON CONFLICT(market_id,result_date) DO NOTHING RETURNING id,open_result,close_result",[marketId,date,phase==='open'?result:null,phase==='close'?result:null]);row=created.rows[0];if(!row){const again=await client.query('SELECT id,open_result,close_result FROM results WHERE market_id=$1 AND result_date=$2 FOR UPDATE',[marketId,date]);row=again.rows[0]}}
  if(phase==='close'&&!row.open_result){await client.query('ROLLBACK');return res.status(409).json({error:'Publish Open result first'})}
- const {rows}=await client.query("UPDATE results SET open_result=CASE WHEN $2='open' THEN $3 ELSE open_result END,close_result=CASE WHEN $2='close' THEN $3 ELSE close_result END,result_text=CASE WHEN $2='open' THEN $3||' - ** - ***' ELSE COALESCE(open_result,'')||' - '||((substring(open_result,1,1)::int+substring(open_result,2,1)::int+substring(open_result,3,1)::int)%10)::text||(($3::text)::int/100+($3::text)::int/10%10+($3::text)::int%10)::int%10||' - '||$3 END WHERE id=$1 RETURNING id,market_id,result_date,open_result,close_result",[row.id,phase,result]);
+ const nextOpen=phase==='open'?result:row.open_result;
+ const nextClose=phase==='close'?result:row.close_result;
+ const {rows}=await client.query('UPDATE results SET open_result=$2,close_result=$3,result_text=$4 WHERE id=$1 RETURNING id,market_id,result_date,open_result,close_result,result_text',[row.id,nextOpen,nextClose,formatResult(nextOpen,nextClose)]);
  await client.query('INSERT INTO admin_audit(admin_id,action,target,details) VALUES($1,$2,$3,$4)',[req.admin.id,'result.'+phase,String(row.id),JSON.stringify({marketId,date,phase})]);await client.query('COMMIT');res.json(rows[0])
  }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
 }));
