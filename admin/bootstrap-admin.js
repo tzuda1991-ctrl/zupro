@@ -19,7 +19,7 @@ try{
   const existing=await client.query('SELECT id,username,email FROM users WHERE username=$1 OR lower(email)=$2 FOR UPDATE',[username,email]);
   if(existing.rowCount){throw new Error('Username or email already exists. No existing account was modified.');}
   const created=await client.query("INSERT INTO users(username,email,mobile,password_hash,role) VALUES($1,$2,NULL,$3,'admin') RETURNING id,username,email,role",[username,email,passwordHash]);
-  await client.query('COMMIT');
+  await client.query("CREATE TABLE IF NOT EXISTS admin_accounts(user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,admin_role TEXT NOT NULL CHECK(admin_role IN ('super_admin','admin')),enabled BOOLEAN NOT NULL DEFAULT true,permissions TEXT[] NOT NULL DEFAULT '{}',created_by BIGINT REFERENCES users(id),created_at TIMESTAMPTZ NOT NULL DEFAULT now())");await client.query("CREATE UNIQUE INDEX IF NOT EXISTS single_super_admin ON admin_accounts(admin_role) WHERE admin_role='super_admin'");await client.query("INSERT INTO admin_accounts(user_id,admin_role,permissions) VALUES($1,'super_admin',ARRAY['view_users','view_markets','view_results'])",[created.rows[0].id]);await client.query('COMMIT');
   console.log('Admin created:',JSON.stringify(created.rows[0]));
  }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
 }catch(e){console.error('Bootstrap failed:',e.message);process.exitCode=1}
