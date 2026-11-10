@@ -18,3 +18,8 @@ export function sendWelcome(email,username){
  const name=escapeHtml(username);
  return sendEmail(email,'Welcome to STAR777!','Welcome to STAR777, '+username+'! Your email has been verified and your account is ready. Keep your password private.',layout('Welcome to STAR777!','<p style="font-size:16px">Hello <strong>'+name+'</strong>,</p><p style="font-size:15px;line-height:1.7">Your email has been verified and your STAR777 account is now ready. Welcome aboard!</p><p style="font-size:14px">For your security, never share your password or verification codes.</p>'));
 }
+
+export function sendUsernameReminder(email,username){
+ const safe=escapeHtml(username);
+ return sendEmail(email,'STAR777 - Username reminder','Your STAR777 username is: '+username+'. If you did not request this email, you can ignore it.',layout('Your username','<p>Your STAR777 username is:</p><p style="font-size:22px;font-weight:bold;color:#073675">'+safe+'</p><p>You can also log in with your registered email or mobile number.</p>'));
+}
