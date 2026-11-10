@@ -1,6 +1,7 @@
 import {randomInt,createHmac,timingSafeEqual} from 'node:crypto';
 import {sendOtp,sendWelcome,sendUsernameReminder,mailConfigured} from './mail.js';
 import express from 'express';
+import webpush from 'web-push';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -18,6 +19,16 @@ const fallback=[['LAXMI MORNING','10:00 AM','12:00 PM'],['KARNATAKA DAY','10:15 
 const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next);
 const db=(req,res,next)=>pool?next():res.status(503).json({error:'Database not configured'});
 app.get('/api/health',(_req,res)=>res.json({ok:true,app:'STAR777',database:pool?'configured':'unconfigured'}));
+const pushReady=Boolean(process.env.VAPID_PUBLIC_KEY&&process.env.VAPID_PRIVATE_KEY&&process.env.VAPID_SUBJECT);
+app.get('/api/push/config',(_req,res)=>res.json({enabled:pushReady,publicKey:pushReady?process.env.VAPID_PUBLIC_KEY:null}));
+app.post('/api/push/subscribe',db,authenticate,wrap(async(req,res)=>{
+ if(!pushReady)return res.status(503).json({error:'Push notifications not configured'});
+ const sub=req.body?.subscription;
+ if(!sub||typeof sub.endpoint!=='string'||!sub.endpoint.startsWith('https://')||sub.endpoint.length>2048||typeof sub.keys?.p256dh!=='string'||typeof sub.keys?.auth!=='string')return res.status(400).json({error:'Invalid subscription'});
+ await pool.query('INSERT INTO push_subscriptions(user_id,endpoint,subscription) VALUES($1,$2,$3) ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id,subscription=excluded.subscription',[req.user.id,sub.endpoint,JSON.stringify(sub)]);
+ res.json({ok:true});
+}));
+app.post('/api/push/unsubscribe',db,authenticate,wrap(async(req,res)=>{const endpoint=req.body?.endpoint;if(typeof endpoint!=='string')return res.status(400).json({error:'Invalid endpoint'});await pool.query('DELETE FROM push_subscriptions WHERE endpoint=$1 AND user_id=$2',[endpoint,req.user.id]);res.json({ok:true})}));
 app.get('/api/markets',wrap(async(_req,res)=>{if(!pool)return res.json(fallback);const {rows}=await pool.query('SELECT id,name,opens AS open,closes AS close FROM markets WHERE enabled=true ORDER BY id');res.json(rows)}));
 app.use('/api',(req,res,next)=>{if(['GET','HEAD','OPTIONS'].includes(req.method))return next();const origin=req.get('origin');if(!origin)return next();try{if(new URL(origin).host===req.get('host'))return next()}catch{}res.status(403).json({error:'Invalid origin'})});
 app.post('/api/auth/register',limit,db,wrap(async(req,res)=>{
