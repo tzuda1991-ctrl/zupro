@@ -13,7 +13,7 @@ class MainActivity : Activity() {
     private lateinit var web: WebView
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val url = "https://example.com" // Replace with your Railway HTTPS domain before publishing APK
+        val url = "https://zupro-production.up.railway.app" // Replace with your Railway HTTPS domain before publishing APK
         web = WebView(this)
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
