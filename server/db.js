@@ -11,6 +11,7 @@ export async function initDb(){
  CREATE TABLE IF NOT EXISTS support_tickets(id BIGSERIAL PRIMARY KEY,user_id BIGINT NOT NULL REFERENCES users(id),message TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'open',created_at TIMESTAMPTZ NOT NULL DEFAULT now());
  CREATE TABLE IF NOT EXISTS demo_ledger(id BIGSERIAL PRIMARY KEY,user_id BIGINT NOT NULL REFERENCES users(id),delta INTEGER NOT NULL,note TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now());`);
  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT");
+ await pool.query("CREATE TABLE IF NOT EXISTS fcm_devices(user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,token TEXT PRIMARY KEY,created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
  await pool.query("CREATE TABLE IF NOT EXISTS push_subscriptions(id BIGSERIAL PRIMARY KEY,user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,endpoint TEXT NOT NULL UNIQUE,subscription JSONB NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
  await pool.query("ALTER TABLE results ADD COLUMN IF NOT EXISTS open_result TEXT");
  await pool.query("ALTER TABLE results ADD COLUMN IF NOT EXISTS close_result TEXT");
