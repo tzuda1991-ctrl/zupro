@@ -1,6 +1,8 @@
 import express from 'express';
 import pg from 'pg';
 import webpush from 'web-push';
+import {initializeApp,cert,getApps} from 'firebase-admin/app';
+import {getMessaging} from 'firebase-admin/messaging';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
@@ -13,6 +15,23 @@ app.disable('x-powered-by');app.set('trust proxy',1);app.use(helmet({contentSecu
 const pool=process.env.DATABASE_URL?new pg.Pool({connectionString:process.env.DATABASE_URL,max:5}):null;
 const pushReady=Boolean(process.env.VAPID_PUBLIC_KEY&&process.env.VAPID_PRIVATE_KEY&&process.env.VAPID_SUBJECT);
 if(pushReady)webpush.setVapidDetails(process.env.VAPID_SUBJECT,process.env.VAPID_PUBLIC_KEY,process.env.VAPID_PRIVATE_KEY);
+let firebaseReady=false;
+if(process.env.FIREBASE_SERVICE_ACCOUNT_JSON){
+ try{const credentials=JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);if(!getApps().length)initializeApp({credential:cert(credentials)});firebaseReady=true}catch(e){console.error('Firebase credentials invalid:',e.message)}
+}
+async function notifyAndroid(marketId,date,phase,formatted){
+ if(!firebaseReady)return;
+ const market=await pool.query('SELECT name FROM markets WHERE id=$1',[marketId]);if(!market.rows.length)return;
+ const title=market.rows[0].name+' '+(phase==='open'?'Open':'Close')+' Result';
+ const {rows}=await pool.query('SELECT token FROM fcm_devices ORDER BY created_at DESC LIMIT 5000');
+ for(let offset=0;offset<rows.length;offset+=500){
+  const batch=rows.slice(offset,offset+500);
+  const response=await getMessaging().sendEachForMulticast({tokens:batch.map(r=>r.token),data:{title,body:formatted},android:{priority:'high'}});
+  const invalid=batch.filter((_,idx)=>!response.responses[idx].success&&['messaging/registration-token-not-registered','messaging/invalid-registration-token'].includes(response.responses[idx].error?.code)).map(r=>r.token);
+  if(invalid.length)await pool.query('DELETE FROM fcm_devices WHERE token=ANY($1::text[])',[invalid]);
+  if(response.failureCount)console.warn('FCM delivery errors',response.failureCount);
+ }
+}
 async function notifyResult(marketId,date,phase,formatted){
  if(!pushReady)return;
  const market=await pool.query('SELECT name FROM markets WHERE id=$1',[marketId]);if(!market.rows.length)return;
@@ -83,7 +102,7 @@ app.post('/api/results',manageLimit,auth,can('manage_results'),wrap(async(req,re
  const nextOpen=phase==='open'?result:row.open_result;
  const nextClose=phase==='close'?result:row.close_result;
  const {rows}=await client.query('UPDATE results SET open_result=$2,close_result=$3,result_text=$4 WHERE id=$1 RETURNING id,market_id,result_date,open_result,close_result,result_text',[row.id,nextOpen,nextClose,formatResult(nextOpen,nextClose)]);
- await client.query('INSERT INTO admin_audit(admin_id,action,target,details) VALUES($1,$2,$3,$4)',[req.admin.id,'result.'+phase,String(row.id),JSON.stringify({marketId,date,phase})]);await client.query('COMMIT');notifyResult(marketId,date,phase,rows[0].result_text).catch(e=>console.error('Push dispatch failed',e.message));res.json(rows[0])
+ await client.query('INSERT INTO admin_audit(admin_id,action,target,details) VALUES($1,$2,$3,$4)',[req.admin.id,'result.'+phase,String(row.id),JSON.stringify({marketId,date,phase})]);await client.query('COMMIT');notifyResult(marketId,date,phase,rows[0].result_text).catch(e=>console.error('Web push dispatch failed',e.message));notifyAndroid(marketId,date,phase,rows[0].result_text).catch(e=>console.error('FCM dispatch failed',e.message));res.json(rows[0])
  }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
 }));
 
@@ -94,6 +113,7 @@ app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Int
 async function start(){
  if(!process.env.ADMIN_ORIGIN)throw Error('ADMIN_ORIGIN required');
  if(pool){
+  await pool.query("CREATE TABLE IF NOT EXISTS fcm_devices(user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,token TEXT PRIMARY KEY,created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
   await pool.query("CREATE TABLE IF NOT EXISTS push_subscriptions(id BIGSERIAL PRIMARY KEY,user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,endpoint TEXT NOT NULL UNIQUE,subscription JSONB NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
   await pool.query("ALTER TABLE results ADD COLUMN IF NOT EXISTS open_result TEXT");
   await pool.query("ALTER TABLE results ADD COLUMN IF NOT EXISTS close_result TEXT");
