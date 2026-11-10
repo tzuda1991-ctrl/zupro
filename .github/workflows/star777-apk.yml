@@ -17,7 +17,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      # ubuntu-latest already includes Android SDK; avoid setup-android sdkmanager 'tools' failure
+      - name: Verify preinstalled Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          test -d "$ANDROID_HOME/platforms" || { echo 'Android SDK platforms missing'; exit 1; }
       - name: Install Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
