@@ -362,3 +362,29 @@ html,body{background:#edf7ff;color:#142d4e}
 .auth-panel .gold{border-radius:35px!important}
 .auth-switch button{border-radius:30px!important}
 @media(max-width:370px){.auth-logo-premium{font-size:37px!important}.premium-star{font-size:51px!important}.auth-panel{padding:13px 12px!important}}
+
+/* v28: unified safe-area bottom navigation across home, charts and all screens */
+:root{--star-nav-bottom:calc(12px + env(safe-area-inset-bottom,0px));--star-nav-height:76px}
+.app:not(:has(.auth-shell)){padding-bottom:calc(112px + env(safe-area-inset-bottom,0px))!important;overflow-x:clip!important;overflow-y:visible!important}
+.app:not(:has(.auth-shell))>.bottom,
+.app:has(.results-screen)>.bottom,
+.market-screen .bottom{
+ position:fixed!important;
+ left:50%!important;right:auto!important;
+ bottom:var(--star-nav-bottom)!important;
+ transform:translateX(-50%)!important;
+ width:calc(100% - 24px)!important;
+ max-width:475px!important;
+ min-height:var(--star-nav-height)!important;
+ margin:0!important;
+ padding:7px 5px!important;
+ box-sizing:border-box!important;
+ z-index:50!important;
+ display:flex!important;
+ align-items:center!important;
+ justify-content:space-around!important;
+}
+.app:not(:has(.auth-shell))>.bottom button{min-width:0;flex:1 1 0;display:flex;align-items:center;justify-content:center;gap:3px;flex-direction:column}
+.app:not(:has(.auth-shell))>.bottom .center-crown{flex:0 0 54px}
+.app:has(.results-screen) .results-screen{padding-bottom:calc(112px + env(safe-area-inset-bottom,0px))!important}
+@media(max-height:690px){:root{--star-nav-height:68px;--star-nav-bottom:calc(9px + env(safe-area-inset-bottom,0px))}}
