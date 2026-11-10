@@ -6,7 +6,7 @@ import rateLimit from 'express-rate-limit';
 import {randomBytes,createHash,scrypt as scryptCb,timingSafeEqual} from 'node:crypto';
 import {promisify} from 'node:util';
 const app=express(),scrypt=promisify(scryptCb);
-app.disable('x-powered-by');app.set('trust proxy',1);app.use(helmet());app.use(express.json({limit:'12kb'}));app.use(cookieParser());
+app.disable('x-powered-by');app.set('trust proxy',1);app.use(helmet({contentSecurityPolicy:{directives:{defaultSrc:["'self'"],scriptSrc:["'self'","'unsafe-inline'"],styleSrc:["'self'","'unsafe-inline'"],connectSrc:["'self'"],imgSrc:["'self'","data:"],objectSrc:["'none'"],baseUri:["'self'"],frameAncestors:["'none'"]}}}));app.use(express.json({limit:'12kb'}));app.use(cookieParser());
 const pool=process.env.DATABASE_URL?new pg.Pool({connectionString:process.env.DATABASE_URL,max:5}):null;
 const SUPER_USERNAME='star777admin';
 const permissions=['view_users','view_markets','view_results'];
