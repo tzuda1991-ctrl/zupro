@@ -1,0 +1,16 @@
+{
+  "name": "star777-admin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1",
+    "helmet": "^8.0.0",
+    "cookie-parser": "^1.4.7",
+    "express-rate-limit": "^7.5.0"
+  }
+}
