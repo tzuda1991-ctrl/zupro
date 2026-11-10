@@ -71,7 +71,7 @@ app.post('/api/admins',manageLimit,auth,superOnly,wrap(async(req,res)=>{
 }));
 app.patch('/api/admins/:id',manageLimit,auth,superOnly,wrap(async(req,res)=>{
  const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1||Object.keys(req.body||{}).some(k=>!['enabled','permissions'].includes(k)))return res.status(400).json({error:'Invalid update'});
- const {enabled,permissions:requested}=req.body||{};if(result_time!==undefined&&!validTime(result_time))||(status_override!==undefined&&!['auto','holiday','closed'].includes(status_override))||(enabled!==undefined&&typeof enabled!=='boolean')return res.status(400).json({error:'Invalid enabled value'});
+ const {enabled,permissions:requested}=req.body||{};if(enabled!==undefined&&typeof enabled!=='boolean')return res.status(400).json({error:'Invalid enabled value'});
  const allowed=requested===undefined?undefined:validPerms(requested);if(requested!==undefined&&!allowed)return res.status(400).json({error:'Invalid permissions'});
  const {rows}=await pool.query("UPDATE admin_accounts SET enabled=COALESCE($2,enabled),permissions=COALESCE($3,permissions) WHERE user_id=$1 AND admin_role='admin' RETURNING user_id,enabled,permissions",[id,enabled??null,allowed??null]);
  if(!rows.length)return res.status(404).json({error:'Admin not found or protected'});
