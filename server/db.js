@@ -3,7 +3,7 @@ const {Pool}=pg;
 export const pool=process.env.DATABASE_URL?new Pool({connectionString:process.env.DATABASE_URL,max:5}):null;
 export async function initDb(){
  if(!pool)return;
- await pool.query(`CREATE TABLE IF NOT EXISTS users(id BIGSERIAL PRIMARY KEY,username TEXT NOT NULL UNIQUE,mobile TEXT UNIQUE,password_hash TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user','admin')),created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+ await pool.query(`CREATE TABLE IF NOT EXISTS users(id BIGSERIAL PRIMARY KEY,username TEXT NOT NULL UNIQUE,mobile TEXT UNIQUE,password_hash TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user','admin')),is_blocked BOOLEAN NOT NULL DEFAULT false,created_at TIMESTAMPTZ NOT NULL DEFAULT now());
  CREATE TABLE IF NOT EXISTS sessions(id_hash TEXT PRIMARY KEY,user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,expires_at TIMESTAMPTZ NOT NULL);
  CREATE TABLE IF NOT EXISTS markets(id BIGSERIAL PRIMARY KEY,name TEXT NOT NULL UNIQUE,opens TEXT NOT NULL,closes TEXT NOT NULL,enabled BOOLEAN NOT NULL DEFAULT true);
  CREATE TABLE IF NOT EXISTS results(id BIGSERIAL PRIMARY KEY,market_id BIGINT NOT NULL REFERENCES markets(id),result_date DATE NOT NULL,result_text TEXT NOT NULL,UNIQUE(market_id,result_date));
@@ -13,7 +13,7 @@ export async function initDb(){
  await pool.query("ALTER TABLE markets ADD COLUMN IF NOT EXISTS result_time TEXT");
  await pool.query("ALTER TABLE markets ADD COLUMN IF NOT EXISTS status_override TEXT");
  await pool.query("UPDATE markets SET result_time=closes WHERE result_time IS NULL");
- await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT");
+ await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT"); await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN NOT NULL DEFAULT false");
  await pool.query("CREATE TABLE IF NOT EXISTS fcm_devices(user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,token TEXT PRIMARY KEY,created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
  await pool.query("CREATE TABLE IF NOT EXISTS push_subscriptions(id BIGSERIAL PRIMARY KEY,user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,endpoint TEXT NOT NULL UNIQUE,subscription JSONB NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
  await pool.query("ALTER TABLE results ADD COLUMN IF NOT EXISTS open_result TEXT");

@@ -97,7 +97,7 @@ app.post('/api/auth/verify-registration',limit,db,wrap(async(req,res)=>{
  sendWelcome(address,user.username).catch(err=>console.error('Welcome email failed',err.message));
  res.status(201).json({user,message:'Email verified. Account created.'});
 }));
-app.post('/api/auth/login',limit,db,wrap(async(req,res)=>{const {username,password}=req.body||{};if(typeof username!=='string'||typeof password!=='string'||username.length>254||password.length>128)return res.status(400).json({error:'Invalid credentials'});const identifier=username.trim().toLowerCase();if(!identifier)return res.status(401).json({error:'Invalid credentials'});const {rows}=await pool.query('SELECT id,username,role,password_hash FROM users WHERE username=$1 OR lower(email)=$1 OR (mobile=$1 AND $1 ~ \'^[0-9]{10}$\') LIMIT 2',[identifier]);if(rows.length!==1||!await verifyPassword(password,rows[0].password_hash))return res.status(401).json({error:'Invalid credentials'});if(rows[0].is_blocked&&rows[0].role!=='admin')return res.status(403).json({error:'Your account is suspended by administrator.'});await issueSession(res,rows[0].id);res.json({user:{id:rows[0].id,username:rows[0].username,role:rows[0].role}})}));
+app.post(['/api/auth/login', '/api/login', '/api/admin/login'],limit,db,wrap(async(req,res)=>{const {username,password}=req.body||{};if(typeof username!=='string'||typeof password!=='string'||username.length>254||password.length>128)return res.status(400).json({error:'Invalid credentials'});const identifier=username.trim().toLowerCase();if(!identifier)return res.status(401).json({error:'Invalid credentials'});const {rows}=await pool.query('SELECT id,username,role,password_hash,COALESCE(is_blocked,false) AS is_blocked FROM users WHERE lower(username)=$1 OR lower(email)=$1 OR (mobile=$1 AND $1 ~ \'^[0-9]{10}$\') LIMIT 2',[identifier]);if(rows.length!==1||!await verifyPassword(password,rows[0].password_hash))return res.status(401).json({error:'Invalid credentials'});if(rows[0].is_blocked&&rows[0].role!=='admin')return res.status(403).json({error:'Your account is suspended by administrator.'});await issueSession(res,rows[0].id);res.json({id:rows[0].id,username:rows[0].username,role:rows[0].role,admin_role:rows[0].role==='admin'?'super_admin':'user',user:{id:rows[0].id,username:rows[0].username,role:rows[0].role}})}));
 
 app.post('/api/auth/forgot-username',resetLimit,db,wrap(async(req,res)=>{
  const email=req.body?.email;
@@ -143,8 +143,8 @@ app.post('/api/auth/reset-password',resetLimit,db,wrap(async(req,res)=>{
   res.json({message:'Password updated. Please log in.'});
  }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
 }));
-app.get('/api/me',db,authenticate,(req,res)=>res.json({user:req.user}));
-app.post('/api/auth/logout',db,authenticate,wrap(async(req,res)=>{await pool.query('DELETE FROM sessions WHERE id_hash=$1',[tokenHash(req.cookies.star777_session)]);res.clearCookie('star777_session',{path:'/'});res.json({ok:true})}));
+app.get(['/api/me', '/api/auth/me', '/api/admin/me'],db,authenticate,(req,res)=>res.json({id:req.user.id,username:req.user.username,role:req.user.role,admin_role:req.user.role==='admin'?'super_admin':'user',permissions:req.user.role==='admin'?['view_users','view_markets','view_results','manage_markets','manage_results','manage_support','view_support','view_audit']:[],user:req.user}));
+app.post(['/api/auth/logout', '/api/logout', '/api/admin/logout'],wrap(async(req,res)=>{if(req.cookies?.star777_session&&pool)await pool.query('DELETE FROM sessions WHERE id_hash=$1',[tokenHash(req.cookies.star777_session)]).catch(()=>{});res.clearCookie('star777_session',{path:'/'});res.json({ok:true})}));
 app.get('/api/results',db,wrap(async(req,res)=>{const {rows}=await pool.query('SELECT r.id,m.name AS market,r.result_date,r.result_text,r.open_result,r.close_result FROM results r JOIN markets m ON m.id=r.market_id ORDER BY r.result_date DESC LIMIT 100');res.json(rows)}));
 const paymentLimit=rateLimit({windowMs:15*60*1000,limit:5,standardHeaders:'draft-7',legacyHeaders:false});
 app.post('/api/payment-requests',paymentLimit,db,authenticate,wrap(async(req,res)=>{
@@ -246,7 +246,8 @@ app.get('/api/config/active-upi',(_req,res)=>{
 });
 
 // --- STAR777 ADMIN CONSOLE & ROUTES ---
-const adminRoot = path.join(__dirname, '..', 'admin');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const adminRoot = path.resolve(__dirname, "../admin");
 app.use('/admin', express.static(adminRoot));
 app.get('/admin', (_req, res) => res.sendFile(path.join(adminRoot, 'index.html')));
 app.get('/admin/*', (_req, res) => res.sendFile(path.join(adminRoot, 'index.html')));
@@ -462,8 +463,100 @@ app.post(['/api/admin/withdrawals/:id/review', '/api/withdrawals/:id/review'], d
     client.release();
   }
 }));
+
+app.post(['/api/admin/markets', '/api/markets'], db, authenticate, adminOnly, wrap(async (req, res) => {
+  const {name, opens, closes, result_time} = req.body || {};
+  if (!name || !opens || !closes) return res.status(400).json({error: "Name, opens, and closes required"});
+  const {rows} = await pool.query(
+    "INSERT INTO markets(name, opens, closes, result_time) VALUES($1, $2, $3, $4) RETURNING *",
+    [name.trim(), opens.trim(), closes.trim(), result_time ? result_time.trim() : closes.trim()]
+  );
+  res.status(201).json(rows[0]);
+}));
+
+app.patch(['/api/admin/markets/:id', '/api/markets/:id'], db, authenticate, adminOnly, wrap(async (req, res) => {
+  const id = Number(req.params.id);
+  const {name, opens, closes, result_time, status_override, enabled} = req.body || {};
+  const {rows} = await pool.query(
+    "UPDATE markets SET name=COALESCE($2, name), opens=COALESCE($3, opens), closes=COALESCE($4, closes), result_time=COALESCE($5, result_time), status_override=$6, enabled=COALESCE($7, enabled) WHERE id=$1 RETURNING *",
+    [id, name || null, opens || null, closes || null, result_time || null, status_override === undefined ? null : status_override, enabled === undefined ? null : Boolean(enabled)]
+  );
+  res.json(rows[0] || {ok: true});
+}));
+
+app.post(['/api/admin/results', '/api/results'], db, authenticate, adminOnly, wrap(async (req, res) => {
+  const {marketId, date, result, phase} = req.body || {};
+  const mId = Number(marketId);
+  const rText = String(result || "").trim();
+  if (!Number.isSafeInteger(mId) || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date || "") || !rText) {
+    return res.status(400).json({error: "Valid marketId, date (YYYY-MM-DD), and result required"});
+  }
+  let query = "INSERT INTO results(market_id, result_date, result_text, open_result, close_result) VALUES($1, $2, $3, $3, null) ON CONFLICT(market_id, result_date) DO UPDATE SET result_text=excluded.result_text RETURNING *";
+  let params = [mId, date, rText];
+  if (phase === "OPEN") {
+    query = "INSERT INTO results(market_id, result_date, result_text, open_result) VALUES($1, $2, $3, $3) ON CONFLICT(market_id, result_date) DO UPDATE SET open_result=excluded.open_result, result_text=excluded.open_result RETURNING *";
+  } else if (phase === "CLOSE") {
+    query = "INSERT INTO results(market_id, result_date, result_text, close_result) VALUES($1, $2, $3, $3) ON CONFLICT(market_id, result_date) DO UPDATE SET close_result=excluded.close_result RETURNING *";
+  }
+  const {rows} = await pool.query(query, params);
+  res.json({ok: true, result: rows[0]});
+}));
+
+app.get(['/api/admin/support', '/api/support'], db, authenticate, adminOnly, wrap(async (req, res) => {
+  const {rows} = await pool.query("SELECT t.id, t.user_id, u.username, t.message, t.status, t.created_at FROM support_tickets t JOIN users u ON u.id = t.user_id ORDER BY t.id DESC LIMIT 100");
+  res.json(rows);
+}));
+
+app.patch(['/api/admin/support/:id', '/api/support/:id'], db, authenticate, adminOnly, wrap(async (req, res) => {
+  const id = Number(req.params.id);
+  const {status} = req.body || {};
+  await pool.query("UPDATE support_tickets SET status=$2 WHERE id=$1", [id, status || "closed"]);
+  res.json({ok: true});
+}));
+
+app.get(['/api/admin/game-entry-summary', '/api/game-entry-summary'], db, authenticate, adminOnly, wrap(async (req, res) => {
+  const {rows} = await pool.query("SELECT g.entry_date, m.name AS market_name, COUNT(*)::int AS total_bids, SUM(g.points)::bigint AS total_points FROM game_entries g JOIN markets m ON m.id = g.market_id GROUP BY g.entry_date, m.name ORDER BY g.entry_date DESC, total_points DESC LIMIT 50");
+  res.json(rows);
+}));
+
+app.get(['/api/admin/audit', '/api/audit'], db, authenticate, adminOnly, wrap(async (req, res) => {
+  const {rows} = await pool.query("SELECT w.id, w.user_id, u.username, w.amount_paise, w.note, w.created_at FROM wallet_ledger w JOIN users u ON u.id = w.user_id ORDER BY w.id DESC LIMIT 100");
+  res.json(rows.map(r => ({ id: r.id, action: "WALLET_LEDGER", details: r.username + ": " + (r.amount_paise > 0 ? "+" : "") + (Number(r.amount_paise)/100).toFixed(2) + " (" + r.note + ")", created_at: r.created_at })));
+}));
+
+app.get(['/api/admin/admins', '/api/admins'], db, authenticate, adminOnly, wrap(async (req, res) => {
+  const {rows} = await pool.query("SELECT id, username, email, mobile, role, is_blocked, created_at FROM users WHERE role='admin' ORDER BY id");
+  res.json(rows.map(r => ({ id: r.id, username: r.username, email: r.email, role: "super_admin", enabled: !r.is_blocked, permissions: ["view_users", "view_markets", "view_results", "manage_markets", "manage_results", "manage_support", "view_support", "view_audit"] })));
+}));
+
 // --- END ADMIN ROUTES ---
 
 app.use(express.static(root,{setHeaders(res,filePath){if(/(?:index\.html|app\.js|style\.css)$/.test(filePath))res.setHeader('Cache-Control','no-store, no-cache, must-revalidate');}}));app.get('*',(_req,res)=>{res.setHeader('Cache-Control','no-store, no-cache, must-revalidate');res.sendFile(path.join(root,'index.html'))});
 app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Internal server error'})});
-const port=Number(process.env.PORT)||3000;initDb().then(()=>app.listen(port,'0.0.0.0',()=>console.log('STAR777 API listening on '+port))).catch(e=>{console.error('Database init failed',e);process.exit(1)});
+async function ensureAdminUser() {
+  if (!pool) return;
+  try {
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN NOT NULL DEFAULT false");
+    await pool.query("UPDATE users SET role='admin' WHERE username IN ('admin', 'tzuda1991', 'star777admin')");
+    const {rows} = await pool.query("SELECT id FROM users WHERE role='admin' LIMIT 1");
+    if (!rows.length) {
+      const hash = await hashPassword('admin777');
+      await pool.query(
+        "INSERT INTO users(username, mobile, email, password_hash, role) VALUES('admin', '9876543210', 'admin@star777.com', $1, 'admin') ON CONFLICT(username) DO UPDATE SET role='admin'",
+        [hash]
+      );
+      console.log("Seeded default admin user: admin / admin777");
+    }
+  } catch (err) {
+    console.error("ensureAdminUser error:", err);
+  }
+}
+
+const port = Number(process.env.PORT) || 3000;
+initDb()
+  .then(() => ensureAdminUser())
+  .then(() => app.listen(port, '0.0.0.0', () => console.log('STAR777 API listening on ' + port)))
+  .catch(e => {
+    console.error('Database init failed', e);
+    process.exit(1);
+  });

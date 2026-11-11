@@ -489,3 +489,10 @@ body:has(.drawer) .bottom,
 .app:has(~ .drawer) .bottom {
   display: none !important;
 }
+
+/* Explicit drawer open rule */
+body.drawer-open .bottom, .drawer-open .bottom {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}

@@ -48,21 +48,24 @@ async function api(path, opts = {}) {
 const post = (path, data, method = 'POST') => api(path, { method, body: JSON.stringify(data) });
 
 function allowed(page) {
+  if (!state.me) return false;
+  if (state.me.role === 'admin' || state.me.admin_role === 'super_admin') return true;
   if (['dashboard', 'users', 'load-sheet', 'starline', 'game-reports'].includes(page)) return true;
-  if (page === 'admins' || page === 'payments' || page === 'withdrawals') return state.me?.admin_role === 'super_admin';
-  return state.me?.admin_role === 'super_admin' || state.me?.permissions?.includes('view_' + page);
+  return Boolean(state.me.permissions?.includes('view_' + page));
 }
 
 function canDo(p) {
-  return state.me?.admin_role === 'super_admin' || state.me?.permissions?.includes(p);
+  if (state.me?.role === 'admin' || state.me?.admin_role === 'super_admin') return true;
+  return Boolean(state.me?.permissions?.includes(p));
 }
 
 async function ready() {
   try {
-    state.me = await api('me');
+    const meRes = await api('me');
+    state.me = meRes.user ? { ...meRes.user, ...meRes } : meRes;
     showAuth(true);
-    $('sideName').textContent = state.me.username;
-    $('sideRole').textContent = state.me.admin_role === 'super_admin' ? 'Super Administrator' : 'Administrator';
+    $('sideName').textContent = state.me.username || 'Admin';
+    $('sideRole').textContent = (state.me.role === 'admin' || state.me.admin_role === 'super_admin') ? 'Super Administrator' : 'Administrator';
     document.querySelectorAll('#nav [data-page]').forEach(b => b.hidden = !allowed(b.dataset.page));
     await page(allowed(state.page) ? state.page : 'dashboard');
   } catch (e) {
@@ -76,7 +79,12 @@ $('loginForm').onsubmit = async e => {
   const btn = $('loginButton');
   btn.disabled = true;
   try {
-    await post('login', { username: $('username').value, password: $('password').value });
+    let res;
+    try {
+      res = await post('login', { username: $('username').value, password: $('password').value });
+    } catch (e) {
+      res = await post('auth/login', { username: $('username').value, password: $('password').value });
+    }
     $('password').value = '';
     await ready();
     if (!state.me) throw Error('Login session could not be verified');
