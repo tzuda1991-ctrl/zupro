@@ -55,6 +55,7 @@ const auth=wrap(async(req,res,next)=>{const token=req.cookies.star777_admin;if(!
 app.get('/api/me',auth,(req,res)=>res.json(req.admin));
 app.post('/api/logout',auth,wrap(async(req,res)=>{await pool.query('DELETE FROM admin_sessions WHERE id_hash=$1',[digest(req.cookies.star777_admin)]);res.clearCookie('star777_admin',{path:'/'});res.json({ok:true})}));
 app.get('/api/summary',auth,wrap(async(req,res)=>{const [u,m,t]=await Promise.all([pool.query('SELECT count(*)::int AS count FROM users'),pool.query('SELECT count(*)::int AS count FROM markets WHERE enabled=true'),pool.query("SELECT count(*)::int AS count FROM support_tickets WHERE status='open'")]);res.json({users:u.rows[0].count,markets:m.rows[0].count,tickets:t.rows[0].count})}));
+const manageLimit=rateLimit({windowMs:15*60*1000,limit:15,standardHeaders:'draft-7',legacyHeaders:false});
 app.get('/api/payment-requests',auth,superOnly,wrap(async(req,res)=>{
  const {rows}=await pool.query("SELECT p.id,p.user_id,u.username,p.method,p.amount_paise,p.utr,p.status,p.created_at,p.reviewed_at FROM payment_requests p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC LIMIT 200");res.json(rows)
 }));
@@ -79,7 +80,7 @@ app.get('/api/users',auth,requirePermission('view_users'),wrap(async(req,res)=>{
 app.get('/api/markets',auth,requirePermission('view_markets'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT id,name,opens,closes,result_time,status_override,enabled FROM markets ORDER BY id');res.json(rows)}));
 app.get('/api/results',auth,requirePermission('view_results'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT r.id,m.name,r.result_date,r.result_text,r.open_result,r.close_result FROM results r JOIN markets m ON m.id=r.market_id ORDER BY r.result_date DESC LIMIT 100');res.json(rows)}));
 
-const manageLimit=rateLimit({windowMs:15*60*1000,limit:15,standardHeaders:'draft-7',legacyHeaders:false});
+
 app.get('/api/admins',auth,superOnly,wrap(async(req,res)=>{const {rows}=await pool.query("SELECT u.id,u.username,u.email,a.admin_role,a.enabled,a.permissions,a.created_at FROM admin_accounts a JOIN users u ON u.id=a.user_id ORDER BY a.created_at DESC");res.json(rows)}));
 app.post('/api/admins',manageLimit,auth,superOnly,wrap(async(req,res)=>{
  const {username,email,password,permissions:requested=[]}=req.body||{};
