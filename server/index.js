@@ -97,7 +97,7 @@ app.post('/api/auth/verify-registration',limit,db,wrap(async(req,res)=>{
  sendWelcome(address,user.username).catch(err=>console.error('Welcome email failed',err.message));
  res.status(201).json({user,message:'Email verified. Account created.'});
 }));
-app.post('/api/auth/login',limit,db,wrap(async(req,res)=>{const {username,password}=req.body||{};if(typeof username!=='string'||typeof password!=='string'||username.length>254||password.length>128)return res.status(400).json({error:'Invalid credentials'});const identifier=username.trim().toLowerCase();if(!identifier)return res.status(401).json({error:'Invalid credentials'});const {rows}=await pool.query('SELECT id,username,role,password_hash FROM users WHERE username=$1 OR lower(email)=$1 OR (mobile=$1 AND $1 ~ \'^[0-9]{10}$\') LIMIT 2',[identifier]);if(rows.length!==1||!await verifyPassword(password,rows[0].password_hash))return res.status(401).json({error:'Invalid credentials'});await issueSession(res,rows[0].id);res.json({user:{id:rows[0].id,username:rows[0].username,role:rows[0].role}})}));
+app.post('/api/auth/login',limit,db,wrap(async(req,res)=>{const {username,password}=req.body||{};if(typeof username!=='string'||typeof password!=='string'||username.length>254||password.length>128)return res.status(400).json({error:'Invalid credentials'});const identifier=username.trim().toLowerCase();if(!identifier)return res.status(401).json({error:'Invalid credentials'});const {rows}=await pool.query('SELECT id,username,role,password_hash FROM users WHERE username=$1 OR lower(email)=$1 OR (mobile=$1 AND $1 ~ \'^[0-9]{10}$\') LIMIT 2',[identifier]);if(rows.length!==1||!await verifyPassword(password,rows[0].password_hash))return res.status(401).json({error:'Invalid credentials'});if(rows[0].is_blocked&&rows[0].role!=='admin')return res.status(403).json({error:'Your account is suspended by administrator.'});await issueSession(res,rows[0].id);res.json({user:{id:rows[0].id,username:rows[0].username,role:rows[0].role}})}));
 
 app.post('/api/auth/forgot-username',resetLimit,db,wrap(async(req,res)=>{
  const email=req.body?.email;
@@ -151,8 +151,8 @@ app.post('/api/payment-requests',paymentLimit,db,authenticate,wrap(async(req,res
  const {method,amount,utr,proof}=req.body||{};
  if(!['upi','qr','bank'].includes(method)||typeof amount!=='number'||!Number.isFinite(amount)||amount<1||amount>100000||Math.round(amount*100)!==amount*100)return res.status(400).json({error:'Invalid amount or method'});
  if(typeof utr!=='string'||!/^[A-Za-z0-9-]{6,40}$/.test(utr))return res.status(400).json({error:'Valid UTR required'});
- if(typeof proof!=='string'||!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(proof)||proof.length>1400000)return res.status(400).json({error:'Valid image proof required (max 1MB)'});
- try{const {rows}=await pool.query('INSERT INTO payment_requests(user_id,method,amount_paise,utr,proof_data) VALUES($1,$2,$3,$4,$5) RETURNING id,status,created_at',[req.user.id,method,Math.round(amount*100),utr,proof]);res.status(201).json(rows[0])}
+ const proofData = (typeof proof === 'string' && /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(proof) && proof.length <= 2500000) ? proof : 'UTR_REFERENCE_ONLY';
+ try{const {rows}=await pool.query('INSERT INTO payment_requests(user_id,method,amount_paise,utr,proof_data) VALUES($1,$2,$3,$4,$5) RETURNING id,status,created_at',[req.user.id,method,Math.round(amount*100),utr,proofData]);res.status(201).json(rows[0])}
  catch(e){if(e.code==='23505')return res.status(409).json({error:'Transaction reference already submitted'});throw e}
 }));
 app.get('/api/payment-requests',db,authenticate,wrap(async(req,res)=>{
@@ -244,6 +244,226 @@ app.get('/api/config/active-upi',(_req,res)=>{
     telegramHandle:process.env.TELEGRAM_SUPPORT||'star777support'
   });
 });
+
+// --- STAR777 ADMIN CONSOLE & ROUTES ---
+const adminRoot = path.join(__dirname, '..', 'admin');
+app.use('/admin', express.static(adminRoot));
+app.get('/admin', (_req, res) => res.sendFile(path.join(adminRoot, 'index.html')));
+app.get('/admin/*', (_req, res) => res.sendFile(path.join(adminRoot, 'index.html')));
+app.get('/admin.css', (_req, res) => res.sendFile(path.join(adminRoot, 'admin.css')));
+app.get('/admin.js', (_req, res) => res.sendFile(path.join(adminRoot, 'admin.js')));
+
+app.get(['/api/admin/summary', '/api/summary'], db, authenticate, adminOnly, wrap(async (req, res) => {
+  const [u, m, t, p, w] = await Promise.all([
+    pool.query('SELECT count(*)::int AS count FROM users'),
+    pool.query('SELECT count(*)::int AS count FROM markets WHERE enabled=true'),
+    pool.query("SELECT count(*)::int AS count FROM support_tickets WHERE status='open'"),
+    pool.query("SELECT count(*)::int AS count FROM payment_requests WHERE status='pending'"),
+    pool.query("SELECT count(*)::int AS count FROM withdrawal_requests WHERE status='pending'")
+  ]);
+  res.json({
+    users: u.rows[0].count,
+    markets: m.rows[0].count,
+    tickets: t.rows[0].count,
+    pending_payments: p.rows[0].count,
+    pending_withdrawals: w.rows[0].count
+  });
+}));
+
+app.get(['/api/admin/users', '/api/users'], db, authenticate, adminOnly, wrap(async (req, res) => {
+  const {rows} = await pool.query(`
+    SELECT u.id, u.username, u.email, u.mobile, u.role,
+           COALESCE(u.is_blocked, false) AS is_blocked,
+           u.created_at,
+           COALESCE(SUM(w.amount_paise), 0)::bigint AS balance_paise
+    FROM users u
+    LEFT JOIN wallet_ledger w ON w.user_id = u.id
+    GROUP BY u.id
+    ORDER BY u.id DESC
+    LIMIT 200
+  `);
+  res.json(rows.map(r => ({
+    ...r,
+    balance: (Number(r.balance_paise) / 100).toFixed(2)
+  })));
+}));
+
+app.post(['/api/admin/users/:id/adjust-balance', '/api/users/:id/adjust-balance'], db, authenticate, adminOnly, wrap(async (req, res) => {
+  const userId = Number(req.params.id);
+  const {points, note} = req.body || {};
+  if (!Number.isSafeInteger(userId) || !Number.isSafeInteger(points) || points === 0)
+    return res.status(400).json({error: 'Valid non-zero integer points required'});
+  await pool.query(
+    'INSERT INTO wallet_ledger(user_id, amount_paise, note) VALUES($1, $2, $3)',
+    [userId, points * 100, note || (points > 0 ? 'Admin Credit' : 'Admin Debit')]
+  );
+  res.json({ok: true, message: 'Points updated successfully (' + (points > 0 ? '+' : '') + points + ')'});
+}));
+
+app.post(['/api/admin/users/:id/toggle-block', '/api/users/:id/toggle-block'], db, authenticate, adminOnly, wrap(async (req, res) => {
+  const userId = Number(req.params.id);
+  const {blocked} = req.body || {};
+  if (!Number.isSafeInteger(userId) || typeof blocked !== 'boolean')
+    return res.status(400).json({error: 'Valid user ID and blocked boolean required'});
+  await pool.query('UPDATE users SET is_blocked=$2 WHERE id=$1', [userId, blocked]);
+  if (blocked) {
+    await pool.query('DELETE FROM sessions WHERE user_id=$1', [userId]);
+  }
+  res.json({ok: true, is_blocked: blocked, message: blocked ? 'User blocked successfully' : 'User unblocked'});
+}));
+
+app.get(['/api/admin/bet-exposure', '/api/bet-exposure'], db, authenticate, adminOnly, wrap(async (req, res) => {
+  const marketId = req.query.marketId ? Number(req.query.marketId) : null;
+  const date = req.query.date || new Intl.DateTimeFormat('en-CA', {timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit'}).format(new Date());
+  const session = req.query.session || null;
+  const gameType = req.query.gameType || null;
+
+  let query = 'SELECT g.selection, g.game_type, g.session, m.name AS market_name, COUNT(*)::int AS total_bids, SUM(g.points)::bigint AS total_points FROM game_entries g JOIN markets m ON m.id = g.market_id WHERE g.entry_date = $1';
+  const params = [date];
+  if (marketId) {
+    params.push(marketId);
+    query += ' AND g.market_id = $' + params.length;
+  }
+  if (session && ['OPEN', 'CLOSE'].includes(session)) {
+    params.push(session);
+    query += ' AND g.session = $' + params.length;
+  }
+  if (gameType) {
+    params.push(gameType);
+    query += ' AND g.game_type = $' + params.length;
+  }
+  query += ' GROUP BY g.selection, g.game_type, g.session, m.name ORDER BY total_points DESC LIMIT 200';
+
+  const {rows} = await pool.query(query, params);
+  const totalStaked = rows.reduce((acc, r) => acc + Number(r.total_points), 0);
+  const totalBids = rows.reduce((acc, r) => acc + Number(r.total_bids), 0);
+
+  res.json({
+    date,
+    marketId,
+    totalStaked,
+    totalBids,
+    topSelections: rows.slice(0, 10),
+    breakdown: rows
+  });
+}));
+
+app.get(['/api/admin/starline-results', '/api/starline-results'], db, authenticate, adminOnly, wrap(async (req, res) => {
+  const date = req.query.date || new Intl.DateTimeFormat('en-CA', {timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit'}).format(new Date());
+  const {rows} = await pool.query(
+    'SELECT id, starline_time, result_date, pana, digit, created_at FROM starline_results WHERE result_date=$1 ORDER BY starline_time',
+    [date]
+  );
+  res.json(rows);
+}));
+
+app.post(['/api/admin/starline-results', '/api/starline-results'], db, authenticate, adminOnly, wrap(async (req, res) => {
+  const {starlineTime, date, pana, digit} = req.body || {};
+  if (!starlineTime || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date || '') || !/^[0-9]{3}$/.test(pana || '') || !/^[0-9]$/.test(digit || ''))
+    return res.status(400).json({error: 'Valid starline time, date, 3-digit pana and 1-digit result required'});
+  const {rows} = await pool.query(`
+    INSERT INTO starline_results(starline_time, result_date, pana, digit)
+    VALUES($1, $2, $3, $4)
+    ON CONFLICT(starline_time, result_date)
+    DO UPDATE SET pana=excluded.pana, digit=excluded.digit
+    RETURNING *
+  `, [starlineTime, date, pana, digit]);
+  res.json({ok: true, result: rows[0]});
+}));
+
+app.get(['/api/admin/payment-requests', '/api/payment-requests/all'], db, authenticate, adminOnly, wrap(async (req, res) => {
+  const {rows} = await pool.query(`
+    SELECT p.id, p.user_id, u.username, p.method, p.amount_paise, p.utr, p.proof_data, p.status, p.created_at, p.reviewed_at
+    FROM payment_requests p
+    JOIN users u ON u.id = p.user_id
+    ORDER BY p.id DESC
+    LIMIT 100
+  `);
+  res.json(rows);
+}));
+
+app.post(['/api/admin/payment-requests/:id/review', '/api/payment-requests/:id/review'], db, authenticate, adminOnly, wrap(async (req, res) => {
+  const id = Number(req.params.id);
+  const {status} = req.body || {};
+  if (!['approved', 'rejected'].includes(status))
+    return res.status(400).json({error: 'Invalid status'});
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const {rows} = await client.query('SELECT id, user_id, amount_paise, status FROM payment_requests WHERE id=$1 FOR UPDATE', [id]);
+    if (!rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({error: 'Request not found'});
+    }
+    if (rows[0].status !== 'pending') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({error: 'Request already reviewed'});
+    }
+    await client.query('UPDATE payment_requests SET status=$2, reviewed_at=now(), reviewed_by=$3 WHERE id=$1', [id, status, req.user.id]);
+    if (status === 'approved') {
+      await client.query(
+        'INSERT INTO wallet_ledger(user_id, amount_paise, payment_request_id, note) VALUES($1, $2, $3, $4)',
+        [rows[0].user_id, rows[0].amount_paise, id, 'Deposit approved: #' + id]
+      );
+    }
+    await client.query('COMMIT');
+    res.json({ok: true, id, status});
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}));
+
+app.get(['/api/admin/withdrawals', '/api/withdrawals/all'], db, authenticate, adminOnly, wrap(async (req, res) => {
+  const {rows} = await pool.query(`
+    SELECT w.id, w.user_id, u.username, w.amount_paise, w.method, w.payout_details, w.status, w.payout_reference, w.created_at, w.reviewed_at
+    FROM withdrawal_requests w
+    JOIN users u ON u.id = w.user_id
+    ORDER BY w.id DESC
+    LIMIT 100
+  `);
+  res.json(rows);
+}));
+
+app.post(['/api/admin/withdrawals/:id/review', '/api/withdrawals/:id/review'], db, authenticate, adminOnly, wrap(async (req, res) => {
+  const id = Number(req.params.id);
+  const {status, reference} = req.body || {};
+  if (!['completed', 'rejected'].includes(status))
+    return res.status(400).json({error: 'Invalid status'});
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const {rows} = await client.query('SELECT id, user_id, amount_paise, status FROM withdrawal_requests WHERE id=$1 FOR UPDATE', [id]);
+    if (!rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({error: 'Request not found'});
+    }
+    if (rows[0].status !== 'pending') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({error: 'Request already reviewed'});
+    }
+    await client.query('UPDATE withdrawal_requests SET status=$2, payout_reference=$3, reviewed_at=now(), reviewed_by=$4 WHERE id=$1', [id, status, reference || null, req.user.id]);
+    if (status === 'completed') {
+      await client.query(
+        'INSERT INTO wallet_ledger(user_id, amount_paise, note) VALUES($1, $2, $3)',
+        [rows[0].user_id, -Number(rows[0].amount_paise), 'Payout completed: #' + id + ' (Ref: ' + (reference || 'N/A') + ')']
+      );
+    }
+    await client.query('COMMIT');
+    res.json({ok: true, id, status});
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}));
+// --- END ADMIN ROUTES ---
+
 app.use(express.static(root,{setHeaders(res,filePath){if(/(?:index\.html|app\.js|style\.css)$/.test(filePath))res.setHeader('Cache-Control','no-store, no-cache, must-revalidate');}}));app.get('*',(_req,res)=>{res.setHeader('Cache-Control','no-store, no-cache, must-revalidate');res.sendFile(path.join(root,'index.html'))});
 app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Internal server error'})});
 const port=Number(process.env.PORT)||3000;initDb().then(()=>app.listen(port,'0.0.0.0',()=>console.log('STAR777 API listening on '+port))).catch(e=>{console.error('Database init failed',e);process.exit(1)});

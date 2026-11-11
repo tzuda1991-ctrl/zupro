@@ -100,7 +100,7 @@ const renderWalletScreen = () => head() + '<div class="pagehead"><button class="
 '<label class="field" style="display:block;margin:10px 0;font-weight:700">Amount (₹)<input name="amount" type="number" min="1" max="100000" step="0.01" required placeholder="Enter deposit amount" style="display:block;width:100%;padding:10px;margin-top:6px;border:1px solid #b7c3d5;border-radius:8px;background:white"></label>' +
 '<label class="field" style="display:block;margin:10px 0;font-weight:700">Payment method<select name="method" required style="display:block;width:100%;padding:10px;margin-top:6px;border:1px solid #b7c3d5;border-radius:8px;background:white"><option value="upi">UPI ID</option><option value="qr">UPI QR</option><option value="bank">Bank Transfer</option></select></label>' +
 '<label class="field" style="display:block;margin:10px 0;font-weight:700">UTR / Transaction Reference (12 Digits)<input name="utr" minlength="6" maxlength="40" required placeholder="Enter 12-digit UTR" style="display:block;width:100%;padding:10px;margin-top:6px;border:1px solid #b7c3d5;border-radius:8px;background:white"></label>' +
-'<label class="field" style="display:block;margin:10px 0;font-weight:700">Payment proof screenshot<input name="proof" type="file" accept="image/png,image/jpeg,image/webp" required style="display:block;width:100%;padding:10px;margin-top:6px"></label>' +
+'<label class="field" style="display:block;margin:10px 0;font-weight:700">Payment proof screenshot (Optional)<input name="proof" type="file" accept="image/png,image/jpeg,image/webp" style="display:block;width:100%;padding:10px;margin-top:6px;border:1px solid #b7c3d5;border-radius:8px;background:white"><small style="display:block;color:#8a450c;font-size:11px;margin-top:4px">Upload screenshot or simply submit with the 12-digit UTR above.</small></label>' +
 '<button class="gold" type="submit" style="width:100%;margin-top:10px">Submit for verification</button></form>' +
 '<h3 style="margin-top:18px">Recent requests</h3><div id="paymentHistory"><p class="muted">Loading requests...</p></div></div>' + nav();
 
@@ -215,10 +215,10 @@ async function loadWalletPanel(){
 document.addEventListener('submit',async e=>{
  if(e.target.id!=='paymentRequestForm')return;
  e.preventDefault();const form=e.target,btn=form.querySelector('button[type=submit]'),data=new FormData(form),file=data.get('proof');
- if(!(file instanceof File)||file.size>1000000||!['image/png','image/jpeg','image/webp'].includes(file.type)){showNotice('Select a valid proof image under 1 MB');return}
+ let proof='UTR_REFERENCE_ONLY';if(file instanceof File&&file.size>0){if(file.size>2500000){showNotice('Image must be under 2.5 MB');return}proof=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('Unable to read proof'));reader.readAsDataURL(file)})}
  btn.disabled=true;
  try{
-  const proof=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('Unable to read proof'));reader.readAsDataURL(file)});
+  
   const response=await fetch('/api/payment-requests',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({method:data.get('method'),amount:Number(data.get('amount')),utr:String(data.get('utr')).trim(),proof})});
   const result=await response.json();if(!response.ok)throw Error(result.error||'Request failed');
   form.reset();showNotice('Payment request #'+result.id+' submitted for verification');await loadWalletPanel();
