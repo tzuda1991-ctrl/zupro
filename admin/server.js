@@ -55,6 +55,26 @@ const auth=wrap(async(req,res,next)=>{const token=req.cookies.star777_admin;if(!
 app.get('/api/me',auth,(req,res)=>res.json(req.admin));
 app.post('/api/logout',auth,wrap(async(req,res)=>{await pool.query('DELETE FROM admin_sessions WHERE id_hash=$1',[digest(req.cookies.star777_admin)]);res.clearCookie('star777_admin',{path:'/'});res.json({ok:true})}));
 app.get('/api/summary',auth,wrap(async(req,res)=>{const [u,m,t]=await Promise.all([pool.query('SELECT count(*)::int AS count FROM users'),pool.query('SELECT count(*)::int AS count FROM markets WHERE enabled=true'),pool.query("SELECT count(*)::int AS count FROM support_tickets WHERE status='open'")]);res.json({users:u.rows[0].count,markets:m.rows[0].count,tickets:t.rows[0].count})}));
+app.get('/api/payment-requests',auth,superOnly,wrap(async(req,res)=>{
+ const {rows}=await pool.query("SELECT p.id,p.user_id,u.username,p.method,p.amount_paise,p.utr,p.status,p.created_at,p.reviewed_at FROM payment_requests p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC LIMIT 200");res.json(rows)
+}));
+app.get('/api/payment-requests/:id/proof',auth,superOnly,wrap(async(req,res)=>{
+ const {rows}=await pool.query('SELECT proof_data FROM payment_requests WHERE id=$1',[req.params.id]);if(!rows.length)return res.status(404).json({error:'Not found'});res.json({proof:rows[0].proof_data})
+}));
+app.post('/api/payment-requests/:id/review',manageLimit,auth,superOnly,wrap(async(req,res)=>{
+ const status=req.body?.status;if(!['approved','rejected'].includes(status))return res.status(400).json({error:'Invalid decision'});
+ const client=await pool.connect();
+ try{
+  await client.query('BEGIN');
+  const {rows}=await client.query('SELECT * FROM payment_requests WHERE id=$1 FOR UPDATE',[req.params.id]);
+  if(!rows.length){await client.query('ROLLBACK');return res.status(404).json({error:'Request not found'})}
+  const request=rows[0];if(request.status!=='pending'){await client.query('ROLLBACK');return res.status(409).json({error:'Request already reviewed'})}
+  await client.query('UPDATE payment_requests SET status=$1,reviewed_at=now(),reviewed_by=$2 WHERE id=$3',[status,req.admin.id,request.id]);
+  if(status==='approved')await client.query('INSERT INTO wallet_ledger(user_id,amount_paise,payment_request_id,note) VALUES($1,$2,$3,$4)',[request.user_id,request.amount_paise,request.id,'Verified payment '+request.utr]);
+  await client.query('INSERT INTO admin_audit(admin_id,action,target,details) VALUES($1,$2,$3,$4)',[req.admin.id,'payment.'+status,String(request.id),JSON.stringify({utr:request.utr,amount_paise:request.amount_paise})]);
+  await client.query('COMMIT');res.json({id:request.id,status})
+ }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
+}));
 app.get('/api/users',auth,requirePermission('view_users'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT id,username,email,mobile,role,created_at FROM users ORDER BY id DESC LIMIT 100');res.json(rows)}));
 app.get('/api/markets',auth,requirePermission('view_markets'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT id,name,opens,closes,result_time,status_override,enabled FROM markets ORDER BY id');res.json(rows)}));
 app.get('/api/results',auth,requirePermission('view_results'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT r.id,m.name,r.result_date,r.result_text,r.open_result,r.close_result FROM results r JOIN markets m ON m.id=r.market_id ORDER BY r.result_date DESC LIMIT 100');res.json(rows)}));
