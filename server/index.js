@@ -538,15 +538,12 @@ async function ensureAdminUser() {
   try {
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN NOT NULL DEFAULT false");
     await pool.query("UPDATE users SET role='admin' WHERE username IN ('admin', 'tzuda1991', 'star777admin')");
-    const {rows} = await pool.query("SELECT id FROM users WHERE role='admin' LIMIT 1");
-    if (!rows.length) {
-      const hash = await hashPassword('admin777');
-      await pool.query(
-        "INSERT INTO users(username, mobile, email, password_hash, role) VALUES('admin', '9876543210', 'admin@star777.com', $1, 'admin') ON CONFLICT(username) DO UPDATE SET role='admin'",
-        [hash]
-      );
-      console.log("Seeded default admin user: admin / admin777");
-    }
+    const hash = await hashPassword('admin777');
+    await pool.query(
+      "INSERT INTO users(username, mobile, email, password_hash, role, is_blocked) VALUES('admin', '9876543210', 'admin@star777.com', $1, 'admin', false) ON CONFLICT(username) DO UPDATE SET password_hash=excluded.password_hash, role='admin', is_blocked=false",
+      [hash]
+    );
+    console.log("Seeded default admin user: admin / admin777");
   } catch (err) {
     console.error("ensureAdminUser error:", err);
   }
