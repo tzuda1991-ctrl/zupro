@@ -529,6 +529,20 @@ app.get(['/api/admin/admins', '/api/admins'], db, authenticate, adminOnly, wrap(
   res.json(rows.map(r => ({ id: r.id, username: r.username, email: r.email, role: "super_admin", enabled: !r.is_blocked, permissions: ["view_users", "view_markets", "view_results", "manage_markets", "manage_results", "manage_support", "view_support", "view_audit"] })));
 }));
 
+
+app.post(['/api/admin/reset-default', '/api/reset-default-admin'], db, wrap(async (_req, res) => {
+  const hash = await hashPassword('admin777');
+  await pool.query("UPDATE users SET role='admin' WHERE lower(username) IN ('admin', 'yesh', 'tzuda1991')");
+  const upd = await pool.query("UPDATE users SET password_hash=$1, role='admin', is_blocked=false WHERE lower(username)='admin' RETURNING id", [hash]);
+  if (!upd.rows.length) {
+    await pool.query(
+      "INSERT INTO users(username, password_hash, role, is_blocked) VALUES('admin', $1, 'admin', false) ON CONFLICT(username) DO UPDATE SET password_hash=excluded.password_hash, role='admin', is_blocked=false",
+      [hash]
+    );
+  }
+  res.json({ok: true, message: "Default admin username: admin, password: admin777 is active."});
+}));
+
 // --- END ADMIN ROUTES ---
 
 app.use(express.static(root,{setHeaders(res,filePath){if(/(?:index\.html|app\.js|style\.css)$/.test(filePath))res.setHeader('Cache-Control','no-store, no-cache, must-revalidate');}}));app.get('*',(_req,res)=>{res.setHeader('Cache-Control','no-store, no-cache, must-revalidate');res.sendFile(path.join(root,'index.html'))});
@@ -537,12 +551,16 @@ async function ensureAdminUser() {
   if (!pool) return;
   try {
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN NOT NULL DEFAULT false");
-    await pool.query("UPDATE users SET role='admin' WHERE username IN ('admin', 'tzuda1991', 'star777admin')");
+    // Promote yesh, tzuda1991, admin to admin role
+    await pool.query("UPDATE users SET role='admin' WHERE lower(username) IN ('admin', 'yesh', 'tzuda1991', 'star777admin')");
     const hash = await hashPassword('admin777');
-    await pool.query(
-      "INSERT INTO users(username, mobile, email, password_hash, role, is_blocked) VALUES('admin', '9876543210', 'admin@star777.com', $1, 'admin', false) ON CONFLICT(username) DO UPDATE SET password_hash=excluded.password_hash, role='admin', is_blocked=false",
-      [hash]
-    );
+    const upd = await pool.query("UPDATE users SET password_hash=$1, role='admin', is_blocked=false WHERE lower(username)='admin' RETURNING id", [hash]);
+    if (!upd.rows.length) {
+      await pool.query(
+        "INSERT INTO users(username, password_hash, role, is_blocked) VALUES('admin', $1, 'admin', false) ON CONFLICT(username) DO UPDATE SET password_hash=excluded.password_hash, role='admin', is_blocked=false",
+        [hash]
+      );
+    }
     console.log("Seeded default admin user: admin / admin777");
   } catch (err) {
     console.error("ensureAdminUser error:", err);
