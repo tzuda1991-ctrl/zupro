@@ -36,6 +36,9 @@ export async function initDb(){
  )`);
  await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS payment_requests_utr_unique ON payment_requests(lower(utr))");
  await pool.query(`CREATE TABLE IF NOT EXISTS wallet_ledger(id BIGSERIAL PRIMARY KEY,user_id BIGINT NOT NULL REFERENCES users(id),amount_paise BIGINT NOT NULL CHECK(amount_paise<>0),payment_request_id BIGINT UNIQUE REFERENCES payment_requests(id),note TEXT NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
+ await pool.query(`CREATE TABLE IF NOT EXISTS game_entries(id BIGSERIAL PRIMARY KEY,user_id BIGINT NOT NULL REFERENCES users(id),market_id BIGINT NOT NULL REFERENCES markets(id),game_type TEXT NOT NULL,selection TEXT NOT NULL,points INTEGER NOT NULL CHECK(points>0),session TEXT NOT NULL CHECK(session IN ('OPEN','CLOSE')),entry_date DATE NOT NULL,status TEXT NOT NULL DEFAULT 'recorded',created_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
+ await pool.query("CREATE INDEX IF NOT EXISTS game_entries_market_date_idx ON game_entries(market_id,entry_date)");
+ await pool.query("CREATE INDEX IF NOT EXISTS game_entries_user_date_idx ON game_entries(user_id,entry_date)");
  const markets=[['LAXMI MORNING','10:00 AM','12:00 PM'],['KARNATAKA DAY','10:15 AM','11:15 AM'],['MILAN MORNING','10:30 AM','11:30 AM'],['SRIDEVI','11:00 AM','12:00 PM'],['MAIN BAZAR DAY','01:00 PM','03:00 PM'],['SUPREME NIGHT','08:00 PM','10:00 PM']];
  for(const [name,opens,closes] of markets)await pool.query('INSERT INTO markets(name,opens,closes) VALUES($1,$2,$3) ON CONFLICT(name) DO NOTHING',[name,opens,closes]);
 }
