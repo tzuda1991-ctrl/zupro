@@ -190,9 +190,9 @@ app.post('/api/bets',db,authenticate,wrap(async(req,res)=>{
   const client=await pool.connect();
   try{
     await client.query('BEGIN');
-    await client.query('SELECT id FROM users WHERE id= FOR UPDATE',[req.user.id]);
-    const balanceRes=await client.query('SELECT COALESCE(SUM(amount_paise),0)::bigint AS amount FROM wallet_ledger WHERE user_id=',[req.user.id]);
-    const holdsRes=await client.query("SELECT COALESCE(SUM(amount_paise),0)::bigint AS amount FROM withdrawal_requests WHERE user_id= AND status='pending'",[req.user.id]);
+    await client.query('SELECT id FROM users WHERE id=$1 FOR UPDATE',[req.user.id]);
+    const balanceRes=await client.query('SELECT COALESCE(SUM(amount_paise),0)::bigint AS amount FROM wallet_ledger WHERE user_id=$1',[req.user.id]);
+    const holdsRes=await client.query("SELECT COALESCE(SUM(amount_paise),0)::bigint AS amount FROM withdrawal_requests WHERE user_id=$1 AND status='pending'",[req.user.id]);
     const availablePoints=Math.floor((Number(balanceRes.rows[0].amount)-Number(holdsRes.rows[0].amount))/100);
     if(availablePoints<points){
       await client.query('ROLLBACK');
@@ -200,11 +200,11 @@ app.post('/api/bets',db,authenticate,wrap(async(req,res)=>{
     }
     const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
     const {rows:entryRows}=await client.query(
-      'INSERT INTO game_entries(user_id,market_id,game_type,selection,points,session,entry_date,status) VALUES(,,,,,,,) RETURNING id,created_at',
+      'INSERT INTO game_entries(user_id,market_id,game_type,selection,points,session,entry_date,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,created_at',
       [req.user.id,marketId,gameType,selection.trim(),points,session,today,'recorded']
     );
     await client.query(
-      'INSERT INTO wallet_ledger(user_id,amount_paise,note) VALUES(,,)',
+      'INSERT INTO wallet_ledger(user_id,amount_paise,note) VALUES($1,$2,$3)',
       [req.user.id,-points*100,'Bet: '+gameType.toUpperCase()+' - '+selection.trim()+' ('+session+') [Entry #'+entryRows[0].id+']']
     );
     await client.query('COMMIT');
@@ -219,7 +219,7 @@ app.post('/api/bets',db,authenticate,wrap(async(req,res)=>{
 
 app.get('/api/game-entries',db,authenticate,wrap(async(req,res)=>{
   const {rows}=await pool.query(
-    'SELECT g.id,g.market_id,m.name AS market_name,g.game_type,g.selection,g.points,g.session,g.entry_date,g.status,g.created_at FROM game_entries g JOIN markets m ON g.market_id=m.id WHERE g.user_id= ORDER BY g.id DESC LIMIT 100',
+    'SELECT g.id,g.market_id,m.name AS market_name,g.game_type,g.selection,g.points,g.session,g.entry_date,g.status,g.created_at FROM game_entries g JOIN markets m ON g.market_id=m.id WHERE g.user_id=$1 ORDER BY g.id DESC LIMIT 100',
     [req.user.id]
   );
   res.json(rows);
@@ -230,7 +230,7 @@ app.post('/api/admin/adjust-balance',db,authenticate,adminOnly,wrap(async(req,re
   if(!Number.isSafeInteger(userId)||!Number.isSafeInteger(points)||points===0)
     return res.status(400).json({error:'Valid user ID and points required'});
   await pool.query(
-    'INSERT INTO wallet_ledger(user_id,amount_paise,note) VALUES(,,)',
+    'INSERT INTO wallet_ledger(user_id,amount_paise,note) VALUES($1,$2,$3)',
     [userId,points*100,note||(points>0?'Admin Credit':'Admin Debit')]
   );
   res.json({ok:true});

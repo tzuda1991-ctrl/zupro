@@ -481,3 +481,11 @@ html{scroll-padding-top:calc(64px + var(--star-safe-top));scroll-padding-bottom:
 .menu-item:active {
   background: #deedfc !important;
 }
+
+
+/* Guarantee bottom navigation never overlaps or appears while drawer is active */
+body:has(.drawer) .bottom,
+#app:has(.drawer) .bottom,
+.app:has(~ .drawer) .bottom {
+  display: none !important;
+}
