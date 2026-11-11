@@ -160,6 +160,23 @@ app.get('/api/payment-requests',db,authenticate,wrap(async(req,res)=>{
 }));
 app.get('/api/wallet',db,authenticate,wrap(async(req,res)=>{const {rows}=await pool.query('SELECT COALESCE(SUM(amount_paise),0)::bigint AS balance_paise FROM wallet_ledger WHERE user_id=$1',[req.user.id]);res.json({currency:'INR',balance_paise:Number(rows[0].balance_paise),balance:Number(rows[0].balance_paise)/100})}));
 app.get('/api/transactions',db,authenticate,wrap(async(req,res)=>{const {rows}=await pool.query('SELECT id,amount_paise,note,created_at FROM wallet_ledger WHERE user_id=$1 ORDER BY id DESC LIMIT 100',[req.user.id]);res.json(rows)}));
+app.get('/api/withdrawals',db,authenticate,wrap(async(req,res)=>{
+ const {rows}=await pool.query('SELECT id,amount_paise,method,status,created_at,reviewed_at FROM withdrawal_requests WHERE user_id=$1 ORDER BY id DESC LIMIT 100',[req.user.id]);res.json(rows)
+}));
+app.post('/api/withdrawals',paymentLimit,db,authenticate,wrap(async(req,res)=>{
+ const {points,method,details}=req.body||{};
+ if(!Number.isSafeInteger(points)||points<1||points>1000000||!['upi','bank'].includes(method)||typeof details!=='string'||details.trim().length<6||details.length>240)return res.status(400).json({error:'Valid points and payout details required'});
+ const amount=points*100,client=await pool.connect();
+ try{
+  await client.query('BEGIN');
+  await client.query('SELECT id FROM users WHERE id=$1 FOR UPDATE',[req.user.id]);
+  const balance=await client.query('SELECT COALESCE(SUM(amount_paise),0)::bigint AS amount FROM wallet_ledger WHERE user_id=$1',[req.user.id]);
+  const holds=await client.query("SELECT COALESCE(SUM(amount_paise),0)::bigint AS amount FROM withdrawal_requests WHERE user_id=$1 AND status='pending'",[req.user.id]);
+  if(Number(balance.rows[0].amount)-Number(holds.rows[0].amount)<amount){await client.query('ROLLBACK');return res.status(409).json({error:'Insufficient available points'})}
+  const {rows}=await client.query('INSERT INTO withdrawal_requests(user_id,amount_paise,method,payout_details) VALUES($1,$2,$3,$4) RETURNING id,status,amount_paise',[req.user.id,amount,method,details.trim()]);
+  await client.query('COMMIT');res.status(201).json(rows[0])
+ }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
+}));
 app.get('/api/notifications',db,authenticate,wrap(async(req,res)=>{const {rows}=await pool.query('SELECT id,title,message,created_at FROM notifications WHERE user_id=$1 OR user_id IS NULL ORDER BY id DESC LIMIT 50',[req.user.id]);res.json(rows)}));
 app.post('/api/support',db,authenticate,wrap(async(req,res)=>{const m=req.body?.message;if(typeof m!=='string'||m.trim().length<5||m.length>2000)return res.status(400).json({error:'Message must be 5-2000 characters'});const {rows}=await pool.query('INSERT INTO support_tickets(user_id,message) VALUES($1,$2) RETURNING id,status',[req.user.id,m.trim()]);res.status(201).json(rows[0])}));
 app.get('/api/admin/summary',db,authenticate,adminOnly,wrap(async(req,res)=>{const [u,t]=await Promise.all([pool.query('SELECT count(*)::int AS count FROM users'),pool.query("SELECT count(*)::int AS count FROM support_tickets WHERE status='open'")]);res.json({users:u.rows[0].count,open_tickets:t.rows[0].count})}));
