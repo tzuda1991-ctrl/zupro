@@ -1,0 +1,284 @@
+const app=document.getElementById('app');
+const recoveryPages=['forgot','reset','forgot-username'];
+const publicPages=['login','signup','forgot','reset','forgot-username','verify-signup'];
+const navigationKey='star777-navigation-v1';
+const savedNavigation=(()=>{try{const data=JSON.parse(sessionStorage.getItem(navigationKey)||'null');return data&&typeof data.page==='string'&&/^[a-z-]{1,32}$/.test(data.page)?data:null}catch{return null}})();
+const savedRecovery=(()=>{try{const data=JSON.parse(sessionStorage.getItem('star777-recovery')||'null');return data&&recoveryPages.includes(data.page)?data:null}catch{return null}})();
+const state={page:savedNavigation?.page||savedRecovery?.page||'login',balance:'0.00',betSession:'OPEN',betPoints:10,drawer:Boolean(savedNavigation?.drawer),username:'',markets:[],results:[],selected:typeof savedNavigation?.selected==='string'?savedNavigation.selected:'',recoveryEmail:savedRecovery?.email||'',pendingEmail:typeof savedNavigation?.pendingEmail==='string'?savedNavigation.pendingEmail:''};
+function saveRecoveryState(){try{if(recoveryPages.includes(state.page)){sessionStorage.setItem('star777-recovery',JSON.stringify({page:state.page,email:state.recoveryEmail||''}))}else{sessionStorage.removeItem('star777-recovery')}}catch{}}
+function saveNavigation(){try{sessionStorage.setItem(navigationKey,JSON.stringify({page:state.page,selected:state.selected,drawer:state.drawer,pendingEmail:state.page==='verify-signup'?state.pendingEmail:''}))}catch{}saveRecoveryState()}
+saveNavigation();
+
+// Branded, accessible STAR777 message dialog; avoids browser-native alerts.
+function showNotice(message){
+ const existing=document.getElementById('star777-notice');if(existing)existing.remove();
+ const overlay=document.createElement('div');overlay.id='star777-notice';overlay.className='star-notice-overlay';
+ overlay.innerHTML='<section class="star-notice" role="alertdialog" aria-modal="true" aria-labelledby="star-notice-title" aria-describedby="star-notice-message"><div class="star-notice-top"><div class="star-notice-logo">★ <span>STAR<b>777</b></span></div><div class="star-notice-crown">♛</div></div><div class="star-notice-content"><div class="star-notice-check">✓</div><h2 id="star-notice-title">STAR777 Notification</h2><p id="star-notice-message"></p><button type="button" class="star-notice-ok">OK, GOT IT</button></div></section>';
+ const messageEl=overlay.querySelector('#star-notice-message');messageEl.textContent=String(message??'');
+ const success=/verified|welcome|success|sent|updated|created/i.test(String(message));
+ const error=/error|invalid|failed|expired|unable|incorrect|already|wait|not configured|unexpected/i.test(String(message));
+ overlay.querySelector('.star-notice-check').textContent=error?'!':success?'✓':'★';
+ overlay.querySelector('#star-notice-title').textContent=/if this email is registered/i.test(String(message))?'Request Received':error?'Please Check':success?'Success!':'STAR777 Notice';
+ const close=()=>{overlay.remove();document.removeEventListener('keydown',onKey)};
+ const onKey=e=>{if(e.key==='Escape'||e.key==='Enter'){e.preventDefault();close()}};
+ overlay.querySelector('.star-notice-ok').addEventListener('click',close);
+ document.body.appendChild(overlay);document.addEventListener('keydown',onKey);overlay.querySelector('.star-notice-ok').focus();
+}
+const categories=['Single Digit','Single Pana','Jodi Digit','Double Pana','Triple Pana','Half Sangam','Full Sangam','SP DP TP','DP Motor','TP Motor'];
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const icons={menu:'<path d="M4 7h16M4 12h16M4 17h16"/>',home:'<path d="m3 11 9-8 9 8v9H3z"/><path d="M9 20v-7h6v7"/>',wallet:'<rect x="3" y="6" width="18" height="15" rx="3"/><path d="M3 10h18M16 15h2"/>',withdraw:'<path d="M12 3v12m-4-4 4 4 4-4M4 17v4h16v-4"/>',chart:'<path d="M4 20V11m6 9V5m6 15v-8m4 8V8"/>',star:'<path d="m12 2 3 6 7 .9-5 4.9 1.2 7L12 17.5 5.8 21l1.2-7-5-4.9L9 8z"/>',history:'<path d="M3 12a9 9 0 1 0 3-6M3 3v6h6M12 7v5l3 2"/>',profile:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-5 16-5 16 0"/>',support:'<path d="M4 5h16v12H9l-5 4z"/>',logout:'<path d="M10 4H4v16h6M14 7l5 5-5 5M9 12h10"/>',passbook:'<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>'};
+const icon=k=>'<svg viewBox="0 0 24 24" aria-hidden="true">'+(icons[k]||icons.star)+'</svg>';
+const go=(page,selected='')=>{state.page=page;state.selected=selected;state.drawer=false;saveNavigation();render();window.scrollTo(0,0)};
+
+const art={crown:'<svg viewBox="0 0 100 85" fill="none" aria-hidden="true"><defs><linearGradient id="cg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff0a2"/><stop offset=".43" stop-color="#f4b900"/><stop offset="1" stop-color="#a65a08"/></linearGradient></defs><path d="M10 26 24 43 40 15 50 42 65 12 78 43 93 25 82 70H18Z" fill="url(#cg)" stroke="#a7630b" stroke-width="2"/><path d="M20 73h60v7H20z" fill="#b16c12"/><g fill="#ffdb52" stroke="#a8660e" stroke-width="2"><circle cx="9" cy="24" r="6"/><circle cx="40" cy="12" r="6"/><circle cx="65" cy="10" r="6"/><circle cx="94" cy="24" r="6"/></g><path d="M20 63h61" stroke="#ffe893" stroke-width="3"/></svg>',star:'<svg viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="sg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff4aa"/><stop offset=".5" stop-color="#f3a900"/><stop offset="1" stop-color="#ad6205"/></linearGradient></defs><path d="m50 5 12 29 32 2-24 21 8 32-28-18-28 18 8-32L6 36l32-2z" fill="url(#sg)" stroke="#b96a0b" stroke-width="2"/></svg>',dice:'<svg viewBox="0 0 100 100" aria-hidden="true"><rect x="12" y="12" width="76" height="76" rx="13" fill="#fff1d8" stroke="#a86831" stroke-width="4" transform="rotate(-12 50 50)"/><g fill="#633012"><circle cx="32" cy="31" r="7"/><circle cx="66" cy="28" r="7"/><circle cx="49" cy="50" r="7"/><circle cx="31" cy="69" r="7"/><circle cx="67" cy="69" r="7"/></g></svg>',cards:'<svg viewBox="0 0 100 100" aria-hidden="true"><rect x="12" y="14" width="56" height="76" rx="7" fill="#fff9ee" stroke="#8a3c16" stroke-width="3" transform="rotate(-13 40 52)"/><rect x="39" y="11" width="50" height="77" rx="7" fill="#fff9ee" stroke="#8a3c16" stroke-width="3" transform="rotate(9 64 50)"/><text x="49" y="40" fill="#c91f32" font-size="20" font-weight="900">A</text><path d="M66 47c-15-18-25 3 0 20 25-17 15-38 0-20" fill="#e22e43"/></svg>'};
+const graphic=(k,cl='')=>'<span class="graphic '+cl+'">'+art[k]+'</span>';
+const crown=graphic('crown','crown');
+const head=()=>'<header class="top"><button class="hamb" aria-label="Open menu" data-action="drawer">'+icon('menu')+'</button><div class="brand">'+graphic('star','brand-star')+'<i>STAR<span>777</span></i><sup>♛</sup></div><button class="refresh-top" data-action="refresh" aria-label="Refresh results" title="Refresh results">⟳</button><button class="bell" data-action="notifications" aria-label="Enable result notifications" title="Enable result notifications">♧<b></b></button></header>';
+const nav=()=>'<nav class="bottom">'+[['home','Home','home'],['history','History','history'],['crown','STAR777','star'],['charts','Charts','chart'],['wallet','Funds','wallet']].map(([p,t,i])=>'<button class="'+(state.page===p?'active':'')+(p==='crown'?' center-crown':'')+'" data-page="'+(p==='crown'?'home':p)+'">'+(p==='crown'?crown:icon(i))+'<span>'+(p==='crown'?'':t)+'</span></button>').join('')+'</nav>';
+const auth=()=>'<div class="auth-shell"><div class="auth-brand"><div class="auth-logo auth-logo-premium"><span class="premium-star">★</span><i>STAR<b>777</b></i><span class="premium-orbit"></span></div><div class="auth-laurel">🛡 &nbsp; Trusted Online Platform &nbsp; 🛡</div></div><div class="auth-panel"><h2><span class="auth-heading-person">●</span> '+(state.page==='signup'?'Create New Account':state.page==='forgot'?'Forgot Password':state.page==='reset'?'Reset Password':'Login to Your Account')+'</h2><form id="authform">'+(state.page==='signup'?'<label class="input-wrap">♟<input name="username" placeholder="Enter User ID" minlength="3" required></label><label class="input-wrap">☎<input name="mobile" placeholder="Enter Mobile Number" inputmode="tel" pattern="[0-9]{10}" required></label><label class="input-wrap">✉<input name="email" type="email" placeholder="Enter Email Address" required></label>':'<label class="input-wrap">♟<input name="username" placeholder="Username / Email / Mobile" autocomplete="username" required></label>')+'<label class="input-wrap">♙<input name="password" type="password" minlength="12" maxlength="128" placeholder="Enter Password" required><button type="button" class="eye" data-action="eye">◉</button></label>'+(state.page==='login'?'<div class="auth-options"><label><input type="checkbox"> Remember Me</label><span><button type="button" data-action="forgot-username">Forgot Username?</button> <button type="button" data-action="forgot">Forgot Password?</button></span></div>':'')+'<button class="gold" type="submit">'+(state.page==='signup'?'CREATE ACCOUNT':'LOGIN ⇥')+'</button></form><div class="auth-switch"><span>'+(state.page==='signup'?'Already have an account?':"Don’t have an account?")+'</span><button data-page="'+(state.page==='signup'?'login':'signup')+'">'+(state.page==='signup'?'Login Here':'♟ Create New Account')+'</button></div><div class="auth-features"><span>♢<small>Secure</small></span><span>ϟ<small>Fast</small></span><span>♧<small>24×7 Support</small></span></div><p class="demo-note">Secure account authentication</p></div><div class="wave-bottom"></div></div>';
+const marketResult=name=>{const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());const r=state.results.find(x=>x.market===name&&String(x.result_date).slice(0,10)===today);return r&&r.open_result?(r.open_result+' - '+(r.close_result?String([...r.open_result].reduce((a,d)=>a+Number(d),0)%10)+String([...r.close_result].reduce((a,d)=>a+Number(d),0)%10):String([...r.open_result].reduce((a,d)=>a+Number(d),0)%10)+'*')+' - '+(r.close_result||'***')):'*** - ** - ***'};
+const home=()=>head()+'<div class="banner"><div class="banner-art">'+graphic('dice')+'</div><div class="banner-center"><div class="banner-crown">'+graphic('crown')+'</div><div class="banner-title">STAR777</div><small>Trusted Online Platform</small></div><div class="banner-art">'+graphic('cards')+'</div></div><div class="dots"><b></b><i></i><i></i></div><div class="user-strip"><div class="user-badge">'+graphic('crown')+'</div><div class="user-details"><strong>Hello, '+esc(state.username||'star777')+'</strong><small>ID: 100001 ▢</small></div><div class="wallet-details"><small>Wallet Balance</small><strong>₹ '+esc(state.balance||'0.00')+'</strong></div><button class="wallet-plus" data-page="wallet">+</button></div><div class="actions">'+[['wallet','Add Point',icon('wallet')],['withdraw','Withdrawal',icon('withdraw')],['starline','Starline',icon('star')],['support','Support',icon('support')]].map(([p,t,i])=>'<button class="action" data-page="'+p+'"><span class="action-icon">'+i+'</span>'+t+'</button>').join('')+'</div><div class="ticker">📣 &nbsp; Welcome to STAR777 &nbsp; │ &nbsp; Play Safe &nbsp; │ &nbsp; Trusted Platform</div><div class="market-heading"><strong>▥ &nbsp; Market List</strong><span>🟢 Live Demo</span></div><div class="market-list">'+state.markets.map((m,i)=>'<section class="market"><div class="market-icon">'+['♛','✿','♠','◆','★','♛'][i%6]+'</div><div class="market-main"><h3>'+esc(m.name)+'</h3><div class="nums">'+esc(marketResult(m.name))+'</div><div class="market-time">◷ &nbsp;'+esc(m.open)+' – '+esc(m.close)+'</div></div><div class="market-side"><span class="status '+(m.status==='OPEN'?'live':'')+'">'+esc(m.status||'SOON')+'</span><button class="view" data-market="'+esc(m.name)+'">'+(m.status==='OPEN'?'PLAY →':m.status==='RESULT'?'VIEW RESULT':'VIEW →')+'</button></div></section>').join('')+'</div>'+nav();
+const menu=()=>state.drawer?'<div class="drawer" data-action="close"><aside><div class="drawer-header"><button class="close" data-action="close">×</button><div class="drawer-user"><div class="drawer-avatar">'+graphic('crown')+'</div><div><strong>'+esc(state.username||'star777')+'</strong><small>ID: 100001 ▢</small></div></div><div class="drawer-wallet"><span>▣ &nbsp; Wallet Balance <strong>₹ '+esc(state.balance||'0.00')+'</strong></span><button data-page="wallet">+</button></div></div><div class="drawer-links">'+[['home','Home',icon('home')],['wallet','Add Point',icon('wallet')],['withdraw','Withdrawal',icon('withdraw')],['starline','Starline',icon('star')],['passbook','Transaction History',icon('passbook')],['history','Game History',icon('history')],['profile','Profile',icon('profile')],['password','Change Password',icon('profile')],['support','Help & Support',icon('support')],['about','About Us',icon('support')],['logout','Logout',icon('logout')]].map(([p,t,i])=>'<button class="menu-item" data-page="'+p+'"><span>'+i+'</span>'+t+'<b>›</b></button>').join('')+'</div><div class="drawer-wave"></div></aside></div>':'';
+const sub=(title,body)=>head()+'<div class="pagehead"><button class="back" data-page="home">←</button>'+esc(title)+'</div>'+body+nav();
+const demoSlip=[];
+const demoPanas=Array.from({length:1000},(_,n)=>String(n).padStart(3,'0')).filter(x=>{const d=[...x];return d[0]<=d[1]&&d[1]<=d[2]&&!(d[0]===d[1]&&d[1]===d[2]&&d[0]==='0')});
+const demoPanaType=p=>new Set(p).size===1?'TP':new Set(p).size===2?'DP':'SP';
+const demoOptions=(items)=>'<option value="">Select Digit</option>'+items.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');
+const demoSelect=(label,name,items)=>'<label class="field" style="display:block;margin:13px 0;font-weight:700">'+label+'<select name="'+name+'" required style="display:block;width:100%;padding:13px;margin-top:7px;border:1px solid #b7c3d5;border-radius:8px;background:white">'+demoOptions(items)+'</select></label>';
+const demoDate=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+
+const cutMap={'0':'5','5':'0','1':'6','6':'1','2':'7','7':'2','3':'8','8':'3','4':'9','9':'4'};
+function getFamilyJodis(j){if(!/^[0-9]{2}$/.test(j))return[];const[a,b]=j.split('');const aC=cutMap[a],bC=cutMap[b];return Array.from(new Set([a+b,a+bC,aC+b,aC+bC,b+a,b+aC,bC+a,bC+bC]));}
+function getCrossingJodis(d){const u=Array.from(new Set(d.filter(x=>/^[0-9]$/.test(x))));const res=[];for(let i=0;i<u.length;i++){for(let j=0;j<u.length;j++){res.push(u[i]+u[j]);}}return res;}
+
+const renderBettingCategory=()=>{
+  const isJodi=state.selected==='Jodi Digit';
+  const isSangam=state.selected.includes('Sangam');
+  const rates={'Single Digit':'10 Ka 95','Jodi Digit':'10 Ka 950','Single Pana':'10 Ka 1500','Double Pana':'10 Ka 3000','Triple Pana':'10 Ka 7000','Half Sangam':'10 Ka 10000','Full Sangam':'10 Ka 100000'};
+  const rateText=rates[state.selected]||'10 Ka 95';
+  return head()+'<div class="pagehead" style="display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center"><button class="back" data-page="market">←</button><div><div style="font-size:16px;font-weight:900">'+esc(state.gameMarket||'STAR777')+'</div><small style="color:#956138;font-size:12px;display:block">'+esc(state.selected)+' · Rate: '+rateText+'</small></div></div><div style="text-align:right"><small style="color:#95765e;font-size:10px;display:block">Wallet</small><strong style="color:#248a50;font-size:15px">₹ '+esc(state.balance||'0.00')+'</strong></div></div>'+
+  '<div class="card" style="margin:10px 14px;padding:16px">'+
+  (!isJodi&&!isSangam?'<div style="display:flex;gap:8px;margin-bottom:14px"><button type="button" class="gold '+(state.betSession==='OPEN'?'':'outline-btn')+'" data-action="set-session" data-val="OPEN" style="flex:1;padding:9px;font-size:12px">OPEN SESSION</button><button type="button" class="gold '+(state.betSession==='CLOSE'?'':'outline-btn')+'" data-action="set-session" data-val="CLOSE" style="flex:1;padding:9px;font-size:12px">CLOSE SESSION</button></div>':'')+
+  (isJodi?'<div style="display:flex;gap:8px;margin-bottom:12px"><button type="button" class="gold" data-action="crossing-tool" style="flex:1;padding:9px;font-size:11px">⚡ Crossing Tool</button><button type="button" class="gold" data-action="family-tool" style="flex:1;padding:9px;font-size:11px"> Cut Family</button></div>':'')+
+  '<form id="betSlipForm">'+
+  '<label class="field" style="display:block;margin:10px 0;font-weight:700">'+(isJodi?'Enter 2-Digit Jodi (00 - 99):':state.selected.includes('Pana')?'Enter 3-Digit Pana (e.g. 137, 248):':'Enter Digit (0 - 9):')+
+  '<input name="selection" id="betSelectionInput" type="text" maxlength="'+(isJodi?2:state.selected.includes('Pana')?3:1)+'" required placeholder="'+(isJodi?'00-99':state.selected.includes('Pana')?'3-digit pana':'0-9')+'" style="display:block;width:100%;padding:11px;margin-top:6px;border:1px solid #b7c3d5;border-radius:8px;background:white;font-size:18px;font-weight:800;letter-spacing:2px;text-align:center">'+
+  '</label>'+
+  (state.selected==='Single Digit'?'<div style="display:grid;grid-template-columns:repeat(5, 1fr);gap:6px;margin:10px 0">'+[1,2,3,4,5,6,7,8,9,0].map(d=>'<button type="button" class="digit-btn" data-action="quick-digit" data-val="'+d+'" style="padding:10px;border:1px solid #b7c3d5;border-radius:8px;background:#fffaf4;font-weight:800;font-size:16px">'+d+'</button>').join('')+'</div>':'')+
+  '<label class="field" style="display:block;margin:10px 0;font-weight:700">Points (Min ₹10):<input name="points" id="betPointsInput" type="number" min="10" max="100000" step="5" value="'+(state.betPoints||10)+'" required placeholder="Min 10" style="display:block;width:100%;padding:11px;margin-top:6px;border:1px solid #b7c3d5;border-radius:8px;background:white;font-size:18px;font-weight:800;text-align:center"></label>'+
+  '<div style="display:flex;gap:6px;margin-bottom:14px">'+[10,50,100,500,1000].map(pt=>'<button type="button" class="quick-chip" data-action="quick-stake" data-val="'+pt+'" style="flex:1;padding:6px 2px;border:1px solid #b7c3d5;border-radius:6px;background:#fff4e5;font-weight:800;font-size:11px">+₹'+pt+'</button>').join('')+'</div>'+
+  '<button type="submit" class="gold" style="width:100%;font-size:16px;padding:14px">PLACE BET ( दांव लगाएं ) ➔</button>'+
+  '</form>'+
+  '</div>'+nav();
+};
+
+const demoForm=()=>'<div class="card" style="margin:12px;padding:20px"><h3>'+esc(state.gameMarket||'STAR777')+' · '+esc(state.selected)+'</h3><p>Game entry is currently unavailable. No stake will be accepted or deducted.</p><button class="gold" data-page="home">Back to markets</button></div>';
+const page=()=>{switch(state.page){
+case 'signup':case 'login':return auth();case 'forgot':case 'reset':case 'forgot-username':return recovery();case 'verify-signup':return signupVerification();case 'home':return home();
+case 'charts':return head()+'<main class="results-screen"><div class="results-heading"><button class="results-back" data-page="home" aria-label="Back">←</button><span class="results-heading-icon" aria-hidden="true">'+icon('chart')+'</span><h1>Result Charts</h1></div><div class="results-list">'+state.markets.map(m=>'<section class="result-card"><span class="result-chart-icon">'+icon('chart')+'<span class="result-arrow">↗</span></span><strong>'+esc(m.name)+'</strong><button class="result-view" data-chart="'+esc(m.name)+'">View →</button></section>').join('')+'</div><div class="results-waves" aria-hidden="true"></div></main>'+nav();
+case 'chart':return sub(state.selected+' Chart','<div class="card"><h3>Result chart</h3><p class="muted">No published results yet.</p></div>');
+case 'market':return '<div class="market-screen">'+head()+'<section class="market-hero"><button class="market-back" data-page="home" aria-label="Back">←</button><div class="market-hero-center"><span class="market-hero-crown">'+graphic('crown')+'</span><strong>'+esc(state.selected)+'</strong></div><span class="market-laurel">❧</span></section><div class="market-game-grid">'+categories.slice(0,8).map((x,i)=>'<button class="market-game-card" data-category="'+esc(x)+'"><span class="market-game-symbol">'+['◆','♠','✿','◈','❀','★','♛','⬖'][i]+'</span><span>'+esc(x)+'</span></button>').join('')+'</div><div class="market-wave"></div>'+nav()+'</div>';
+case 'category':return renderBettingCategory();
+
+const renderStarlineScreen = () => {
+  const hours = ['10:00 AM','11:00 AM','12:00 PM','01:00 PM','02:00 PM','03:00 PM','04:00 PM','05:00 PM','06:00 PM','07:00 PM','08:00 PM','09:00 PM','10:00 PM'];
+  return head() + '<div class="pagehead"><button class="back" data-page="home">←</button>⭐ Starline Hourly Games</div>' +
+  '<div style="padding:10px 14px">' +
+  '<div class="card" style="margin-bottom:12px;background:linear-gradient(135deg,#fffbf0,#fff4e0);border-color:#e0be84">' +
+  '<strong>⚡ Hourly Live Results (10 AM to 10 PM)</strong>' +
+  '<p class="small" style="margin:5px 0 0">Bet on Single Digit (Rate 9.5x) and Pana (Rate 150x) every hour!</p>' +
+  '</div>' +
+  '<div class="market-list">' +
+  hours.map((h, i) => '<section class="market"><div class="market-icon">★</div><div class="market-main"><h3>STARLINE ' + h + '</h3><div class="nums">' + (i < 4 ? '248 - 4' : '*** - *') + '</div><div class="market-time">Result at ' + h + '</div></div><div class="market-side"><span class="status ' + (i === 4 ? 'live' : '') + '">' + (i < 4 ? 'DECLARED' : i === 4 ? 'OPEN' : 'SOON') + '</span><button class="view" data-page="category" data-market="STARLINE ' + h + '">' + (i === 4 ? 'PLAY →' : 'VIEW') + '</button></div></section>').join('') +
+  '</div>' +
+  '</div>' + nav();
+};
+
+case 'starline':return renderStarlineScreen();case 'password':return sub('Change Password','<div class="card">Password changes are unavailable in demo mode.</div>');case 'about':return sub('About Us','<div class="card">STAR777 demo preview.</div>');const renderWalletScreen = () => head() + '<div class="pagehead"><button class="back" data-page="home">←</button>Wallet & Deposits</div>' +
+'<div class="card" style="padding:16px"><h2>Wallet</h2><div id="walletBalance">Loading balance…</div>' +
+'<div style="background:#fff4e5;border:1px dashed #dca12f;border-radius:12px;padding:12px;margin:12px 0;text-align:center">' +
+'<div style="font-size:11px;font-weight:700;color:#8a450c">Official Receiver UPI ID:</div>' +
+'<div style="font-size:18px;font-weight:900;color:#4a2612;margin:4px 0" id="depositUpiId">star777pay@icici</div>' +
+'<button type="button" class="gold" data-action="copy-upi" style="padding:6px 14px;font-size:12px;margin-top:4px">📋 Copy UPI ID</button>' +
+'<div style="margin-top:10px"><img src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=upi://pay?pa=star777pay@icici&pn=STAR777&cu=INR" alt="QR" style="border-radius:8px;border:2px solid #ecd3ba"></div>' +
+'<small style="display:block;margin-top:6px;color:#95765e">Scan with PhonePe / GPay / Paytm / BHIM</small></div>' +
+'<div style="display:flex;gap:6px;margin:10px 0">' + [100,300,500,1000,2000].map(a=>'<button type="button" class="quick-amt" data-action="quick-amt" data-val="'+a+'" style="flex:1;padding:6px 2px;border:1px solid #b7c3d5;border-radius:6px;background:#fff4e5;font-weight:800;font-size:11px">+₹'+a+'</button>').join('') + '</div>' +
+'<form id="paymentRequestForm">' +
+'<label class="field" style="display:block;margin:10px 0;font-weight:700">Amount (₹)<input name="amount" type="number" min="1" max="100000" step="0.01" required style="display:block;width:100%;padding:10px;margin-top:6px;border:1px solid #b7c3d5;border-radius:8px;background:white"></label>' +
+'<label class="field" style="display:block;margin:10px 0;font-weight:700">Payment method<select name="method" required style="display:block;width:100%;padding:10px;margin-top:6px;border:1px solid #b7c3d5;border-radius:8px;background:white"><option value="upi">UPI ID</option><option value="qr">UPI QR</option><option value="bank">Bank Transfer</option></select></label>' +
+'<label class="field" style="display:block;margin:10px 0;font-weight:700">UTR / Transaction Reference (12 Digits)<input name="utr" minlength="6" maxlength="40" required placeholder="Enter 12-digit UTR" style="display:block;width:100%;padding:10px;margin-top:6px;border:1px solid #b7c3d5;border-radius:8px;background:white"></label>' +
+'<label class="field" style="display:block;margin:10px 0;font-weight:700">Payment proof screenshot<input name="proof" type="file" accept="image/png,image/jpeg,image/webp" required style="display:block;width:100%;padding:10px;margin-top:6px"></label>' +
+'<button class="gold" type="submit" style="width:100%;margin-top:10px">Submit for verification</button></form>' +
+'<h3 style="margin-top:18px">Recent requests</h3><div id="paymentHistory">Loading…</div></div>' + nav();
+case 'wallet':return renderWalletScreen();
+case 'withdraw':return sub('Withdrawal','<div class="card"><h2>Request Withdrawal</h2><p id="withdrawAvailable">Checking available points…</p><form id="withdrawForm"><label>Points<input type="number" name="points" min="1" step="1" required></label><label>Receive via<select name="method"><option value="upi">UPI</option><option value="bank">Bank Account</option></select></label><label>UPI ID or Bank Details<textarea name="details" minlength="6" maxlength="240" required placeholder="UPI ID or account holder, account number, IFSC"></textarea></label><button class="gold" type="submit">Request Withdrawal</button></form><h3>Requests</h3><div id="withdrawHistory">Loading…</div></div>');
+case 'profile':return sub('My profile','<div class="card">Username: '+esc(state.username||'Guest')+'<p class="muted">Local preview only.</p></div>');
+
+const renderPassbookScreen=()=>head()+'<div class="pagehead"><button class="back" data-page="home">←</button>Passbook Statement</div><div id="passbookList" style="padding:12px 14px"><div class="card">Loading statement...</div></div>'+nav();
+const renderHistoryScreen=()=>head()+'<div class="pagehead"><button class="back" data-page="home">←</button>My Bids History</div><div id="historyList" style="padding:12px 14px"><div class="card">Loading game history...</div></div>'+nav();
+case 'passbook':return renderPassbookScreen();case 'history':return renderHistoryScreen();
+case 'support':return sub('Support','<div class="card">Support details will be configured later.</div>');
+default:return home()}};
+const signupVerification=()=>'<div class="auth-shell"><div class="auth-brand"><div class="auth-logo">'+graphic('star','auth-star')+'<i>STAR<b>777</b></i></div><div class="auth-crown">'+graphic('crown')+'</div><div class="auth-laurel">🛡 &nbsp; Secure Email Verification &nbsp; 🛡</div></div><div class="auth-panel"><h2>Verify Your Email</h2><p class="demo-note">We sent a 6-digit code to '+esc(state.pendingEmail||'your email')+'. Check Inbox or Spam.</p><form id="verifyform"><label class="input-wrap">♯<input name="otp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="Enter 6-digit Email OTP" required></label><button class="gold" type="submit">VERIFY &amp; CREATE ACCOUNT</button></form><div class="auth-switch"><button type="button" id="resend-signup-otp" data-action="resend-signup-otp" style="margin-bottom:10px">RESEND OTP <span id="signup-otp-timer"></span></button><button data-page="signup">Back to Sign Up</button></div><p class="demo-note">Code expires in 10 minutes. Resend available after 60 seconds. Never share your OTP.</p></div><div class="wave-bottom"></div></div>';
+const recovery=()=>'<div class="auth-shell"><div class="auth-brand"><div class="auth-logo">'+graphic('star','auth-star')+'<i>STAR<b>777</b></i></div><div class="auth-crown">'+graphic('crown')+'</div><div class="auth-laurel">🛡 &nbsp; Secure Account Recovery &nbsp; 🛡</div></div><div class="auth-panel"><h2>'+(state.page==='forgot'?'Forgot Password':state.page==='forgot-username'?'Forgot Username':'Reset Password')+'</h2><form id="recoveryform"><label class="input-wrap">✉<input type="email" name="email" placeholder="Registered Email Address" value="'+esc(state.recoveryEmail||'')+'" required></label>'+(state.page==='reset'?'<label class="input-wrap">♯<input name="otp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="6-digit Email OTP" required></label><label class="input-wrap">♙<input name="password" type="password" minlength="12" maxlength="128" placeholder="New Password (12+ characters)" required></label>':'')+'<button class="gold" type="submit">'+(state.page==='forgot'?'SEND EMAIL OTP':state.page==='forgot-username'?'EMAIL MY USERNAME':'RESET PASSWORD')+'</button></form><div class="auth-switch"><button data-page="login">Back to Login</button></div><p class="demo-note">OTP expires in 10 minutes. Never share your code.</p></div><div class="wave-bottom"></div></div>';
+function render(){app.innerHTML='<div class="app">'+page()+'</div>'+menu()+'<div class="support-float" style="position:fixed;bottom:85px;right:14px;z-index:9;display:flex;flex-direction:column;gap:8px"><a href="https://wa.me/919876543210" target="_blank" style="display:flex;align-items:center;gap:6px;background:#25d366;color:#fff;padding:8px 12px;border-radius:20px;font-size:12px;font-weight:800;text-decoration:none;box-shadow:0 3px 8px #0004">💬 WhatsApp</a><a href="https://t.me/star777support" target="_blank" style="display:flex;align-items:center;gap:6px;background:#0088cc;color:#fff;padding:8px 12px;border-radius:20px;font-size:12px;font-weight:800;text-decoration:none;box-shadow:0 3px 8px #0004">✈️ Telegram</a></div>';updateSignupOtpTimer();if(state.page==='wallet')loadWalletPanel();if(state.page==='withdraw')loadWithdrawalPanel();
+if(state.page==='passbook')loadPassbookData();
+if(state.page==='history')loadGameHistoryData();
+}
+function updateSignupOtpTimer(){const button=document.getElementById('resend-signup-otp');if(!button)return;const remaining=Math.max(0,Math.ceil(((state.signupOtpCooldownUntil||0)-Date.now())/1000));button.disabled=remaining>0||Boolean(state.resendingSignupOtp);const label=document.getElementById('signup-otp-timer');if(label)label.textContent=remaining?'('+remaining+'s)':''}
+setInterval(updateSignupOtpTimer,1000);
+document.addEventListener('click',async e=>{const button=e.target.closest('[data-action="resend-signup-otp"]');if(!button||button.disabled)return;if(!state.pendingEmail){showNotice('Please sign up again to request an OTP.');go('signup');return}state.resendingSignupOtp=true;updateSignupOtpTimer();try{const response=await fetch('/api/auth/resend-registration-otp',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:state.pendingEmail})});const data=await response.json();if(!response.ok){if(data.retryAfter)state.signupOtpCooldownUntil=Date.now()+data.retryAfter*1000;throw new Error(data.error||'Unable to resend OTP')}state.signupOtpCooldownUntil=Date.now()+60000;showNotice(data.message||'A new OTP has been sent.')}catch(err){showNotice(err.message||'Unable to resend OTP')}finally{state.resendingSignupOtp=false;updateSignupOtpTimer()}});
+document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.page){if(b.dataset.page==='logout'){fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'}).finally(()=>{state.username='';state.pendingEmail='';go('login')});return}go(b.dataset.page);return}if(b.dataset.market){state.gameMarket=b.dataset.market;go('category','Single Pana');return}if(b.dataset.chart){go('chart',b.dataset.chart);return}if(b.dataset.category){if(state.page==='market')state.gameMarket=state.selected;go('category',b.dataset.category);return}if(b.dataset.removeDemo!==undefined){demoSlip.splice(Number(b.dataset.removeDemo),1);render();return}if(b.dataset.action==='notifications'){enableResultNotifications();return}if(b.dataset.action==='refresh'){refreshPublicData(true);return}if(b.dataset.action==='drawer'){state.drawer=true;saveNavigation();render()}if(b.dataset.action==='close'){state.drawer=false;saveNavigation();render()}if(b.dataset.action==='eye'){const p=document.querySelector('input[name=password]');if(p)p.type=p.type==='password'?'text':'password'}if(b.dataset.action==='forgot')go('forgot');if(b.dataset.action==='forgot-username')go('forgot-username');if(b.dataset.action==='demo')showNotice('Demo points are not implemented yet.')});
+document.addEventListener('submit',async e=>{if(e.target.id!=='authform')return;e.preventDefault();const form=e.target;const btn=form.querySelector('[type=submit]');const data=Object.fromEntries(new FormData(form));const signup=state.page==='signup';btn.disabled=true;try{const response=await fetch(signup?'/api/auth/register':'/api/auth/login',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:data.username,password:data.password,...(signup?{mobile:data.mobile,email:data.email}:{})})});const body=await response.json();if(!response.ok)throw new Error(body.error||'Authentication failed');if(signup){if(response.status===202||body.verificationRequired){state.pendingEmail=data.email;state.signupOtpCooldownUntil=Date.now()+60000;showNotice(body.message||'Check your email for OTP');go('verify-signup')}else{throw new Error(body.error||'Registration verification response was unexpected. Please refresh and try again.')}}else{if(!body.user||!body.user.username)throw new Error('Unexpected login response. Please refresh and try again.');state.username=body.user.username;go('home')}}catch(err){showNotice(err.message||'Unable to sign in')}finally{btn.disabled=false}});
+document.addEventListener('submit',async e=>{if(e.target.id!=='verifyform')return;e.preventDefault();const btn=e.target.querySelector('[type=submit]');btn.disabled=true;try{const otp=new FormData(e.target).get('otp');const response=await fetch('/api/auth/verify-registration',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:state.pendingEmail,otp})});const body=await response.json();if(!response.ok)throw new Error(body.error||'Verification failed');state.username=body.user.username;state.pendingEmail='';showNotice('Email verified! Welcome to STAR777.');go('home')}catch(err){showNotice(err.message||'Verification failed')}finally{btn.disabled=false}});
+document.addEventListener('input',e=>{if(e.target?.matches('#recoveryform input[name="email"]')){state.recoveryEmail=e.target.value;saveNavigation()}});
+document.addEventListener('submit',async e=>{if(e.target.id!=='recoveryform')return;e.preventDefault();const btn=e.target.querySelector('[type=submit]');const data=Object.fromEntries(new FormData(e.target));const forgot=state.page==='forgot',forgotUsername=state.page==='forgot-username';btn.disabled=true;try{const response=await fetch(forgot?'/api/auth/forgot-password':forgotUsername?'/api/auth/forgot-username':'/api/auth/reset-password',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const body=await response.json();if(!response.ok)throw new Error(body.error||'Request failed');showNotice(body.message);if(forgot){state.recoveryEmail=data.email;go('reset')}else go('login')}catch(err){showNotice(err.message||'Unable to process request')}finally{btn.disabled=false}});
+window.star777ReceiveFcmToken=async token=>{
+ if(typeof token!=='string'||!token)return;
+ try{const response=await fetch('/api/fcm/register',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});if(!response.ok&&response.status!==401)console.warn('FCM registration pending')}catch{}
+};
+function base64ToUint8Array(base64){const pad='='.repeat((4-base64.length%4)%4);const raw=atob((base64+pad).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(raw,c=>c.charCodeAt(0))}
+async function enableResultNotifications(){
+ try{
+  if(window.Star777Android){window.Star777Android.registerPush();showNotice('Android notifications requested. Please allow notification permission.');return;}if(!('serviceWorker'in navigator)||!('PushManager'in window)||!('Notification'in window))throw Error('Push notifications are not supported in this browser.');
+  const config=await fetch('/api/push/config',{cache:'no-store'}).then(r=>r.json());if(!config.enabled)throw Error('Notifications are not configured yet.');
+  const permission=await Notification.requestPermission();if(permission!=='granted')throw Error('Notification permission was not allowed.');
+  await navigator.serviceWorker.register('/sw.js');const registration=await navigator.serviceWorker.ready;
+  let subscription=await registration.pushManager.getSubscription();if(!subscription)subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:base64ToUint8Array(config.publicKey)});
+  const response=await fetch('/api/push/subscribe',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:subscription.toJSON()})});const data=await response.json();if(!response.ok)throw Error(data.error||'Unable to enable notifications');showNotice('Result notifications enabled!');
+ }catch(e){showNotice(e.message||'Unable to enable notifications')}
+}
+let refreshBusy=false;
+async function refreshPublicData(manual=false){
+ if(refreshBusy)return;refreshBusy=true;
+ const btn=document.querySelector('.refresh-top');if(btn)btn.classList.add('refreshing');
+ try{const [mr,rr]=await Promise.all([fetch('/api/markets',{cache:'no-store'}),fetch('/api/results',{cache:'no-store'})]);if(!mr.ok||!rr.ok)throw Error('Unable to refresh');const [markets,results]=await Promise.all([mr.json(),rr.json()]);state.markets=markets;state.results=results;render();if(manual)showNotice('Results updated successfully.')}catch{if(manual)showNotice('Unable to refresh results. Please try again.')}finally{refreshBusy=false;document.querySelector('.refresh-top')?.classList.remove('refreshing')}
+}
+refreshPublicData();setInterval(()=>{if(!document.hidden&&state.page==='home')refreshPublicData()},10000);document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.page==='home')refreshPublicData()});window.addEventListener('focus',()=>{if(state.page==='home')refreshPublicData()});
+
+render();
+fetch('/api/me',{credentials:'same-origin'}).then(async r=>{if(!r.ok){if(!publicPages.includes(state.page))go('login');return}const data=await r.json();if(data.user?.username){if(window.Star777Android)window.Star777Android.registerPush();state.username=data.user.username;if(state.page==='login'||state.page==='signup')go('home');else render();
+fetch('/api/wallet',{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(w=>{if(w&&w.balance!==undefined){state.balance=Number(w.balance).toFixed(2);render();}}).catch(()=>{});
+}else if(!publicPages.includes(state.page))go('login')}).catch(()=>{});
+
+async function loadWalletPanel(){
+ if(state.page!=='wallet')return;
+ try{
+  const [w,p]=await Promise.all([fetch('/api/wallet',{credentials:'same-origin'}),fetch('/api/payment-requests',{credentials:'same-origin'})]);
+  if(!w.ok||!p.ok)throw Error('Sign in to view wallet');
+  const wallet=await w.json(),requests=await p.json();
+  const balance=document.getElementById('walletBalance'),history=document.getElementById('paymentHistory');
+  if(balance)balance.textContent='Verified balance: ₹'+Number(wallet.balance).toFixed(2);
+  if(history)history.innerHTML=requests.length?requests.map(r=>'<p>#'+esc(r.id)+' · ₹'+esc((Number(r.amount_paise)/100).toFixed(2))+' · '+esc(r.method)+' · '+esc(r.status)+'</p>').join(''):'No requests yet';
+ }catch(e){const el=document.getElementById('walletBalance');if(el)el.textContent=e.message}
+}
+document.addEventListener('submit',async e=>{
+ if(e.target.id!=='paymentRequestForm')return;
+ e.preventDefault();const form=e.target,btn=form.querySelector('button[type=submit]'),data=new FormData(form),file=data.get('proof');
+ if(!(file instanceof File)||file.size>1000000||!['image/png','image/jpeg','image/webp'].includes(file.type)){showNotice('Select a valid proof image under 1 MB');return}
+ btn.disabled=true;
+ try{
+  const proof=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('Unable to read proof'));reader.readAsDataURL(file)});
+  const response=await fetch('/api/payment-requests',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({method:data.get('method'),amount:Number(data.get('amount')),utr:String(data.get('utr')).trim(),proof})});
+  const result=await response.json();if(!response.ok)throw Error(result.error||'Request failed');
+  form.reset();showNotice('Payment request #'+result.id+' submitted for verification');await loadWalletPanel();
+ }catch(err){showNotice(err.message)}finally{btn.disabled=false}
+});
+
+async function loadWithdrawalPanel(){
+ if(state.page!=='withdraw')return;
+ try{
+  const [w,r]=await Promise.all([fetch('/api/wallet',{credentials:'same-origin'}),fetch('/api/withdrawals',{credentials:'same-origin'})]);
+  if(!w.ok||!r.ok)throw Error('Unable to load withdrawals');
+  const wallet=await w.json(),requests=await r.json();
+  const held=requests.filter(x=>x.status==='pending').reduce((sum,x)=>sum+Number(x.amount_paise),0);
+  const available=document.getElementById('withdrawAvailable'),history=document.getElementById('withdrawHistory');
+  if(available)available.textContent='Available: '+Math.max(0,(Number(wallet.balance_paise)-held)/100).toFixed(2)+' Points · Pending holds: '+(held/100).toFixed(2);
+  if(history)history.innerHTML=requests.length?requests.map(x=>'<p>#'+esc(x.id)+' · '+esc(Number(x.amount_paise)/100)+' Points · '+esc(x.status)+'</p>').join(''):'No withdrawals yet';
+ }catch(e){const el=document.getElementById('withdrawAvailable');if(el)el.textContent=e.message}
+}
+document.addEventListener('submit',async e=>{
+ if(e.target.id!=='withdrawForm')return;e.preventDefault();
+ const form=e.target,btn=form.querySelector('[type=submit]'),d=Object.fromEntries(new FormData(form));btn.disabled=true;
+ try{
+  const r=await fetch('/api/withdrawals',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({points:Number(d.points),method:d.method,details:d.details})});
+  const result=await r.json();if(!r.ok)throw Error(result.error||'Withdrawal request failed');
+  form.reset();showNotice('Withdrawal request #'+result.id+' submitted');await loadWithdrawalPanel()
+ }catch(err){showNotice(err.message)}finally{btn.disabled=false}
+});
+
+async function loadPassbookData(){
+  try{
+    const r=await fetch('/api/transactions',{credentials:'same-origin'});
+    if(!r.ok)return;
+    const items=await r.json();
+    const el=document.getElementById('passbookList');
+    if(!el)return;
+    if(!items.length){el.innerHTML='<div class="card">No transactions found.</div>';return;}
+    el.innerHTML=items.map(it=>'<div class="card" style="margin-bottom:8px;padding:12px;display:flex;justify-content:space-between;align-items:center"><div><strong>'+esc(it.note)+'</strong><small style="display:block;color:#95765e">'+new Date(it.created_at).toLocaleString('en-IN')+'</small></div><strong style="font-size:16px;color:'+(it.amount_paise>0?'#248a50':'#c91f32')+'">'+(it.amount_paise>0?'+':'-')+'₹'+(Math.abs(Number(it.amount_paise))/100).toFixed(2)+'</strong></div>').join('');
+  }catch{}
+}
+async function loadGameHistoryData(){
+  try{
+    const r=await fetch('/api/game-entries',{credentials:'same-origin'});
+    if(!r.ok)return;
+    const items=await r.json();
+    const el=document.getElementById('historyList');
+    if(!el)return;
+    if(!items.length){el.innerHTML='<div class="card">No bids placed yet.</div>';return;}
+    el.innerHTML=items.map(it=>'<div class="card" style="margin-bottom:8px;padding:12px"><div style="display:flex;justify-content:space-between"><strong>'+esc(it.market_name)+' · '+esc(it.game_type)+'</strong><span class="status '+(it.status==='won'?'live':'')+'">'+esc(it.status.toUpperCase())+'</span></div><div style="margin:6px 0;font-size:14px">Selection: <b>'+esc(it.selection)+'</b> ('+esc(it.session)+') · Points: <b>'+esc(it.points)+'</b></div><small style="color:#95765e">'+new Date(it.created_at).toLocaleString('en-IN')+'</small></div>').join('');
+  }catch{}
+}
+
+document.addEventListener('click',e=>{
+  const b=e.target.closest('button');
+  if(!b)return;
+  
+  if(b.dataset.action==='copy-upi'){navigator.clipboard?.writeText('star777pay@icici');showNotice('UPI ID copied to clipboard: star777pay@icici');return;}
+  if(b.dataset.action==='quick-amt'){const inp=document.querySelector('#paymentRequestForm input[name="amount"]');if(inp)inp.value=b.dataset.val;return;}
+  if(b.dataset.action==='set-session'){state.betSession=b.dataset.val;render();return;}
+  if(b.dataset.action==='quick-stake'){const inp=document.getElementById('betPointsInput');if(inp){inp.value=Number(b.dataset.val);state.betPoints=Number(b.dataset.val);}return;}
+  if(b.dataset.action==='quick-digit'){const inp=document.getElementById('betSelectionInput');if(inp){inp.value=b.dataset.val;}return;}
+  if(b.dataset.action==='crossing-tool'){
+    const digits=prompt('Enter 2 to 6 digits for Crossing (e.g. 1258):');
+    if(!digits)return;
+    const jodis=getCrossingJodis(digits.split(''));
+    if(!jodis.length){showNotice('Invalid digits');return;}
+    const inp=document.getElementById('betSelectionInput');
+    if(inp){inp.value=jodis[0];showNotice('Generated '+jodis.length+' Crossing Jodis! Placed first: '+jodis[0]);}
+    return;
+  }
+  if(b.dataset.action==='family-tool'){
+    const j=prompt('Enter 2-Digit Jodi (e.g. 24):');
+    if(!j||!/^[0-9]{2}$/.test(j)){showNotice('Enter valid 2-digit Jodi');return;}
+    const fam=getFamilyJodis(j);
+    const inp=document.getElementById('betSelectionInput');
+    if(inp){inp.value=fam[0];showNotice('Family Jodis: '+fam.join(', '));}
+    return;
+  }
+});
+
+document.addEventListener('submit',async e=>{
+  if(e.target.id!=='betSlipForm')return;
+  e.preventDefault();
+  const form=e.target,btn=form.querySelector('button[type=submit]');
+  const data=Object.fromEntries(new FormData(form));
+  const selection=String(data.selection).trim();
+  const points=Number(data.points);
+  const session=state.selected==='Jodi Digit'||state.selected.includes('Sangam')?'OPEN':state.betSession||'OPEN';
+  if(!selection||points<10){showNotice('Enter valid number and minimum 10 points');return;}
+  const curBal=Number(state.balance||0);
+  if(curBal<points){showNotice('Insufficient balance! Current balance is ₹'+curBal.toFixed(2)+'. Please Add Points first.');return;}
+  btn.disabled=true;btn.textContent='Placing bet...';
+  try{
+    const market=state.markets.find(m=>m.name===state.gameMarket)||state.markets[0]||{id:1};
+    const r=await fetch('/api/bets',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({marketId:market.id,gameType:state.selected.toLowerCase().replace(/s+/g,'_'),selection,session,points})});
+    const res=await r.json();
+    if(!r.ok)throw new Error(res.error||'Failed to place bet');
+    showNotice('Bet of ₹'+points+' on ['+selection+'] placed successfully!');
+    state.balance=Number(res.remainingBalance).toFixed(2);
+    const inp=form.querySelector('#betSelectionInput');if(inp)inp.value='';
+    render();
+  }catch(err){showNotice(err.message||'Unable to place bet');}
+  finally{btn.disabled=false;btn.textContent='PLACE BET ( दांव लगाएं ) ➔';}
+});

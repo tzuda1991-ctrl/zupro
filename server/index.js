@@ -181,6 +181,69 @@ app.get('/api/notifications',db,authenticate,wrap(async(req,res)=>{const {rows}=
 app.post('/api/support',db,authenticate,wrap(async(req,res)=>{const m=req.body?.message;if(typeof m!=='string'||m.trim().length<5||m.length>2000)return res.status(400).json({error:'Message must be 5-2000 characters'});const {rows}=await pool.query('INSERT INTO support_tickets(user_id,message) VALUES($1,$2) RETURNING id,status',[req.user.id,m.trim()]);res.status(201).json(rows[0])}));
 app.get('/api/admin/summary',db,authenticate,adminOnly,wrap(async(req,res)=>{const [u,t]=await Promise.all([pool.query('SELECT count(*)::int AS count FROM users'),pool.query("SELECT count(*)::int AS count FROM support_tickets WHERE status='open'")]);res.json({users:u.rows[0].count,open_tickets:t.rows[0].count})}));
 app.post('/api/admin/results',db,authenticate,adminOnly,wrap(async(req,res)=>{const {marketId,date,result}=req.body||{};if(!Number.isSafeInteger(marketId)||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date||'')||typeof result!=='string'||result.length>50)return res.status(400).json({error:'Invalid result'});const {rows}=await pool.query('INSERT INTO results(market_id,result_date,result_text) VALUES($1,$2,$3) ON CONFLICT(market_id,result_date) DO UPDATE SET result_text=excluded.result_text RETURNING id',[marketId,date,result]);res.json(rows[0])}));
+app.post('/api/bets',db,authenticate,wrap(async(req,res)=>{
+  const {marketId,gameType,selection,session,points}=req.body||{};
+  if(!Number.isSafeInteger(marketId)||!['OPEN','CLOSE'].includes(session)||!Number.isSafeInteger(points)||points<10||points>500000)
+    return res.status(400).json({error:'Valid market, session and points (min 10) required'});
+  if(typeof gameType!=='string'||typeof selection!=='string'||!selection.trim())
+    return res.status(400).json({error:'Valid game type and selection required'});
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    await client.query('SELECT id FROM users WHERE id= FOR UPDATE',[req.user.id]);
+    const balanceRes=await client.query('SELECT COALESCE(SUM(amount_paise),0)::bigint AS amount FROM wallet_ledger WHERE user_id=',[req.user.id]);
+    const holdsRes=await client.query("SELECT COALESCE(SUM(amount_paise),0)::bigint AS amount FROM withdrawal_requests WHERE user_id= AND status='pending'",[req.user.id]);
+    const availablePoints=Math.floor((Number(balanceRes.rows[0].amount)-Number(holdsRes.rows[0].amount))/100);
+    if(availablePoints<points){
+      await client.query('ROLLBACK');
+      return res.status(409).json({error:'Insufficient balance! Please add points to your wallet.'});
+    }
+    const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    const {rows:entryRows}=await client.query(
+      'INSERT INTO game_entries(user_id,market_id,game_type,selection,points,session,entry_date,status) VALUES(,,,,,,,) RETURNING id,created_at',
+      [req.user.id,marketId,gameType,selection.trim(),points,session,today,'recorded']
+    );
+    await client.query(
+      'INSERT INTO wallet_ledger(user_id,amount_paise,note) VALUES(,,)',
+      [req.user.id,-points*100,'Bet: '+gameType.toUpperCase()+' - '+selection.trim()+' ('+session+') [Entry #'+entryRows[0].id+']']
+    );
+    await client.query('COMMIT');
+    res.status(201).json({ok:true,entryId:entryRows[0].id,remainingBalance:availablePoints-points});
+  }catch(e){
+    await client.query('ROLLBACK');
+    throw e;
+  }finally{
+    client.release();
+  }
+}));
+
+app.get('/api/game-entries',db,authenticate,wrap(async(req,res)=>{
+  const {rows}=await pool.query(
+    'SELECT g.id,g.market_id,m.name AS market_name,g.game_type,g.selection,g.points,g.session,g.entry_date,g.status,g.created_at FROM game_entries g JOIN markets m ON g.market_id=m.id WHERE g.user_id= ORDER BY g.id DESC LIMIT 100',
+    [req.user.id]
+  );
+  res.json(rows);
+}));
+
+app.post('/api/admin/adjust-balance',db,authenticate,adminOnly,wrap(async(req,res)=>{
+  const {userId,points,note}=req.body||{};
+  if(!Number.isSafeInteger(userId)||!Number.isSafeInteger(points)||points===0)
+    return res.status(400).json({error:'Valid user ID and points required'});
+  await pool.query(
+    'INSERT INTO wallet_ledger(user_id,amount_paise,note) VALUES(,,)',
+    [userId,points*100,note||(points>0?'Admin Credit':'Admin Debit')]
+  );
+  res.json({ok:true});
+}));
+
+app.get('/api/config/active-upi',(_req,res)=>{
+  res.json({
+    upiId:process.env.ACTIVE_UPI_ID||'star777pay@icici',
+    payeeName:process.env.ACTIVE_PAYEE_NAME||'STAR777 ENTERPRISE',
+    whatsappNumber:process.env.WHATSAPP_SUPPORT||'919876543210',
+    telegramHandle:process.env.TELEGRAM_SUPPORT||'star777support'
+  });
+});
 app.use(express.static(root,{setHeaders(res,filePath){if(/(?:index\.html|app\.js|style\.css)$/.test(filePath))res.setHeader('Cache-Control','no-store, no-cache, must-revalidate');}}));app.get('*',(_req,res)=>{res.setHeader('Cache-Control','no-store, no-cache, must-revalidate');res.sendFile(path.join(root,'index.html'))});
 app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Internal server error'})});
 const port=Number(process.env.PORT)||3000;initDb().then(()=>app.listen(port,'0.0.0.0',()=>console.log('STAR777 API listening on '+port))).catch(e=>{console.error('Database init failed',e);process.exit(1)});
