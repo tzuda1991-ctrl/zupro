@@ -76,6 +76,306 @@ app.post('/api/payment-requests/:id/review',manageLimit,auth,superOnly,wrap(asyn
   await client.query('COMMIT');res.json({id:request.id,status})
  }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
 }));
+app.get('/api/game-entries',auth,superOnly,wrap(async(req,res)=>{
+ const {user,market,date}=req.query;
+ const conditions=[],params=[];
+ if(user){if(!/^\d+$/.test(String(user)))return res.status(400).json({error:'Invalid user ID'});params.push(user);conditions.push('e.user_id=,auth,requirePermission('view_users'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT id,username,email,mobile,role,created_at FROM users ORDER BY id DESC LIMIT 100');res.json(rows)}));
+app.get('/api/markets',auth,requirePermission('view_markets'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT id,name,opens,closes,result_time,status_override,enabled FROM markets ORDER BY id');res.json(rows)}));
+app.get('/api/results',auth,requirePermission('view_results'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT r.id,m.name,r.result_date,r.result_text,r.open_result,r.close_result FROM results r JOIN markets m ON m.id=r.market_id ORDER BY r.result_date DESC LIMIT 100');res.json(rows)}));
+
+
+app.get('/api/admins',auth,superOnly,wrap(async(req,res)=>{const {rows}=await pool.query("SELECT u.id,u.username,u.email,a.admin_role,a.enabled,a.permissions,a.created_at FROM admin_accounts a JOIN users u ON u.id=a.user_id ORDER BY a.created_at DESC");res.json(rows)}));
+app.post('/api/admins',manageLimit,auth,superOnly,wrap(async(req,res)=>{
+ const {username,email,password,permissions:requested=[]}=req.body||{};
+ if(typeof username!=='string'||!/^[a-zA-Z0-9_]{3,24}$/.test(username)||username.toLowerCase()===SUPER_USERNAME||typeof email!=='string'||email.length>254||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)||typeof password!=='string'||password.length<16||password.length>128)return res.status(400).json({error:'Valid username, email and 16+ character password required'});
+ const allowed=validPerms(requested);if(!allowed)return res.status(400).json({error:'Invalid permissions'});
+ const salt=randomBytes(16).toString('hex'),hash=salt+':'+(await scrypt(password,salt,64)).toString('hex');
+ const client=await pool.connect();
+ try{await client.query('BEGIN');const {rows}=await client.query("INSERT INTO users(username,email,password_hash,role) VALUES($1,$2,$3,'admin') RETURNING id,username,email",[username.toLowerCase(),email.trim().toLowerCase(),hash]);await client.query("INSERT INTO admin_accounts(user_id,admin_role,permissions,enabled,created_by) VALUES($1,'admin',$2,true,$3)",[rows[0].id,allowed,req.admin.id]);await client.query('COMMIT');await audit(req.admin.id,'admin.create',String(rows[0].id),{username:rows[0].username});res.status(201).json({...rows[0],admin_role:'admin',permissions:allowed,enabled:true})}catch(e){await client.query('ROLLBACK');if(e.code==='23505')return res.status(409).json({error:'Username or email already exists'});throw e}finally{client.release()}
+}));
+app.patch('/api/admins/:id',manageLimit,auth,superOnly,wrap(async(req,res)=>{
+ const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1||Object.keys(req.body||{}).some(k=>!['enabled','permissions'].includes(k)))return res.status(400).json({error:'Invalid update'});
+ const {enabled,permissions:requested}=req.body||{};if(enabled!==undefined&&typeof enabled!=='boolean')return res.status(400).json({error:'Invalid enabled value'});
+ const allowed=requested===undefined?undefined:validPerms(requested);if(requested!==undefined&&!allowed)return res.status(400).json({error:'Invalid permissions'});
+ const {rows}=await pool.query("UPDATE admin_accounts SET enabled=COALESCE($2,enabled),permissions=COALESCE($3,permissions) WHERE user_id=$1 AND admin_role='admin' RETURNING user_id,enabled,permissions",[id,enabled??null,allowed??null]);
+ if(!rows.length)return res.status(404).json({error:'Admin not found or protected'});
+ if(enabled===false)await pool.query('DELETE FROM admin_sessions WHERE user_id=$1',[id]);await audit(req.admin.id,'admin.update',String(id),{enabled,permissions:allowed});
+ res.json(rows[0]);
+}));
+
+
+const validTime=t=>typeof t==='string'&&/^(0?[1-9]|1[0-2]):[0-5][0-9] (AM|PM)$/.test(t);
+const idOf=x=>/^[1-9][0-9]{0,15}$/.test(String(x))?String(x):null;
+const audit=async(adminId,action,target,details={})=>pool.query('INSERT INTO admin_audit(admin_id,action,target,details) VALUES($1,$2,$3,$4)',[adminId,action,target,JSON.stringify(details)]);
+const can=p=>(req,res,next)=>isSuper(req)||req.admin?.permissions?.includes(p)?next():res.status(403).json({error:'Permission denied'});
+app.get('/api/support',auth,can('view_support'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT t.id,t.user_id,u.username,t.message,t.status,t.created_at FROM support_tickets t JOIN users u ON u.id=t.user_id ORDER BY t.id DESC LIMIT 150');res.json(rows)}));
+app.patch('/api/support/:id',manageLimit,auth,can('manage_support'),wrap(async(req,res)=>{const id=idOf(req.params.id),status=req.body?.status;if(!id||!['open','in_progress','resolved'].includes(status)||Object.keys(req.body||{}).length!==1)return res.status(400).json({error:'Invalid ticket update'});const {rows}=await pool.query('UPDATE support_tickets SET status=$2 WHERE id=$1 RETURNING id,status',[id,status]);if(!rows.length)return res.status(404).json({error:'Ticket not found'});await audit(req.admin.id,'support.status',id,{status});res.json(rows[0])}));
+app.get('/api/audit',auth,can('view_audit'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT a.id,u.username AS admin,a.action,a.target,a.details,a.created_at FROM admin_audit a JOIN users u ON u.id=a.admin_id ORDER BY a.id DESC LIMIT 200');res.json(rows)}));
+app.post('/api/markets',manageLimit,auth,can('manage_markets'),wrap(async(req,res)=>{const {name,opens,closes,result_time}=req.body||{};if(result_time!==undefined&&!validTime(result_time))return res.status(400).json({error:'Invalid result time'});if(typeof name!=='string'||name.trim().length<3||name.length>80||typeof opens!=='string'||opens.length>30||typeof closes!=='string'||closes.length>30)return res.status(400).json({error:'Invalid market details'});try{const {rows}=await pool.query('INSERT INTO markets(name,opens,closes,result_time) VALUES($1,$2,$3,$4) RETURNING *',[name.trim(),opens.trim(),closes.trim(),result_time||closes.trim()]);await audit(req.admin.id,'market.create',String(rows[0].id),{name:rows[0].name});res.status(201).json(rows[0])}catch(e){if(e.code==='23505')return res.status(409).json({error:'Market already exists'});throw e}}));
+app.patch('/api/markets/:id',manageLimit,auth,can('manage_markets'),wrap(async(req,res)=>{
+ const id=idOf(req.params.id);
+ const {name,opens,closes,result_time,status_override,enabled}=req.body||{};
+ const permitted=['name','opens','closes','result_time','status_override','enabled'];
+ if(!id||!req.body||!Object.keys(req.body).length||Object.keys(req.body).some(k=>!permitted.includes(k)))return res.status(400).json({error:'Invalid market update'});
+ if(name!==undefined&&(typeof name!=='string'||name.trim().length<3||name.length>80))return res.status(400).json({error:'Invalid name'});
+ if(opens!==undefined&&(typeof opens!=='string'||!opens.trim()||opens.length>30))return res.status(400).json({error:'Invalid open time'});
+ if(closes!==undefined&&(typeof closes!=='string'||!closes.trim()||closes.length>30))return res.status(400).json({error:'Invalid close time'});
+ if(result_time!==undefined&&!validTime(result_time))return res.status(400).json({error:'Invalid result time'});
+ if(status_override!==undefined&&!['auto','holiday','closed'].includes(status_override))return res.status(400).json({error:'Invalid status override'});
+ if(enabled!==undefined&&typeof enabled!=='boolean')return res.status(400).json({error:'Invalid enabled value'});
+ try{
+  const {rows}=await pool.query("UPDATE markets SET name=COALESCE($2,name),opens=COALESCE($3,opens),closes=COALESCE($4,closes),enabled=COALESCE($5,enabled),result_time=COALESCE($6,result_time),status_override=CASE WHEN $7='auto' THEN NULL ELSE COALESCE($7,status_override) END WHERE id=$1 RETURNING *",[id,name?.trim()??null,opens?.trim()??null,closes?.trim()??null,enabled??null,result_time??null,status_override??null]);
+  if(!rows.length)return res.status(404).json({error:'Market not found'});
+  await audit(req.admin.id,'market.update',id,req.body);
+  res.json(rows[0]);
+ }catch(e){
+  if(e.code==='23505')return res.status(409).json({error:'Market name already exists'});
+  throw e;
+ }
+}));
+const panaOrder='1234567890';
+const validPana=value=>typeof value==='string'&&/^[0-9]{3}$/.test(value)&&value===value.split('').sort((a,b)=>panaOrder.indexOf(a)-panaOrder.indexOf(b)).join('');
+const panaAnk=value=>String([...value].reduce((n,d)=>n+Number(d),0)%10);
+const formatResult=(open,close)=>open+' - '+(close?panaAnk(open)+panaAnk(close):panaAnk(open)+'*')+' - '+(close||'***');
+app.post('/api/results',manageLimit,auth,can('manage_results'),wrap(async(req,res)=>{
+ const {marketId,date,result,phase}=req.body||{};
+ if(!idOf(marketId)||typeof date!=='string'||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date)||Number.isNaN(Date.parse(date))||!['open','close'].includes(phase)||typeof result!=='string'||!validPana(result))return res.status(400).json({error:'Invalid Pana. Use the standard 220 Pana chart (e.g. 139, 188, 780; not 198, 187, 078).'});
+ const client=await pool.connect();
+ try{await client.query('BEGIN');const {rows:existing}=await client.query('SELECT id,open_result,close_result FROM results WHERE market_id=$1 AND result_date=$2 FOR UPDATE',[marketId,date]);
+ let row=existing[0];if(!row){const created=await client.query("INSERT INTO results(market_id,result_date,result_text,open_result,close_result) VALUES($1,$2,'',$3,$4) ON CONFLICT(market_id,result_date) DO NOTHING RETURNING id,open_result,close_result",[marketId,date,phase==='open'?result:null,phase==='close'?result:null]);row=created.rows[0];if(!row){const again=await client.query('SELECT id,open_result,close_result FROM results WHERE market_id=$1 AND result_date=$2 FOR UPDATE',[marketId,date]);row=again.rows[0]}}
+ if(phase==='close'&&!row.open_result){await client.query('ROLLBACK');return res.status(409).json({error:'Publish Open result first'})}
+ const nextOpen=phase==='open'?result:row.open_result;
+ const nextClose=phase==='close'?result:row.close_result;
+ const {rows}=await client.query('UPDATE results SET open_result=$2,close_result=$3,result_text=$4 WHERE id=$1 RETURNING id,market_id,result_date,open_result,close_result,result_text',[row.id,nextOpen,nextClose,formatResult(nextOpen,nextClose)]);
+ await client.query('INSERT INTO admin_audit(admin_id,action,target,details) VALUES($1,$2,$3,$4)',[req.admin.id,'result.'+phase,String(row.id),JSON.stringify({marketId,date,phase})]);await client.query('COMMIT');notifyResult(marketId,date,phase,rows[0].result_text).catch(e=>console.error('Web push dispatch failed',e.message));notifyAndroid(marketId,date,phase,rows[0].result_text).catch(e=>console.error('FCM dispatch failed',e.message));res.json(rows[0])
+ }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
+}));
+
+const adminRoot=path.dirname(fileURLToPath(import.meta.url));
+app.use(express.static(adminRoot,{index:false,fallthrough:true}));
+app.get('/',(_req,res)=>res.sendFile(path.join(adminRoot,'index.html')));
+app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Internal server error'})});
+async function start(){
+ if(!process.env.ADMIN_ORIGIN)throw Error('ADMIN_ORIGIN required');
+ if(pool){
+  await pool.query("CREATE TABLE IF NOT EXISTS fcm_devices(user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,token TEXT PRIMARY KEY,created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await pool.query("CREATE TABLE IF NOT EXISTS push_subscriptions(id BIGSERIAL PRIMARY KEY,user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,endpoint TEXT NOT NULL UNIQUE,subscription JSONB NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await pool.query("ALTER TABLE markets ADD COLUMN IF NOT EXISTS result_time TEXT");
+  await pool.query("ALTER TABLE markets ADD COLUMN IF NOT EXISTS status_override TEXT");
+  await pool.query("UPDATE markets SET result_time=closes WHERE result_time IS NULL");
+  await pool.query("ALTER TABLE results ADD COLUMN IF NOT EXISTS open_result TEXT");
+  await pool.query("ALTER TABLE results ADD COLUMN IF NOT EXISTS close_result TEXT");
+  await pool.query("UPDATE results SET open_result=result_text WHERE open_result IS NULL AND close_result IS NULL AND result_text ~ '^[0-9]{3}$'");
+  await pool.query("CREATE TABLE IF NOT EXISTS admin_audit(id BIGSERIAL PRIMARY KEY,admin_id BIGINT NOT NULL REFERENCES users(id),action TEXT NOT NULL,target TEXT NOT NULL,details JSONB NOT NULL DEFAULT '{}',created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await pool.query("CREATE TABLE IF NOT EXISTS admin_sessions(id_hash TEXT PRIMARY KEY,user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,expires_at TIMESTAMPTZ NOT NULL)");
+  await pool.query("CREATE TABLE IF NOT EXISTS admin_accounts(user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,admin_role TEXT NOT NULL CHECK(admin_role IN ('super_admin','admin')),enabled BOOLEAN NOT NULL DEFAULT true,permissions TEXT[] NOT NULL DEFAULT '{}',created_by BIGINT REFERENCES users(id),created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS single_super_admin ON admin_accounts(admin_role) WHERE admin_role='super_admin'");
+  await pool.query("INSERT INTO admin_accounts(user_id,admin_role,permissions) SELECT id,'super_admin',ARRAY['view_users','view_markets','view_results'] FROM users WHERE username=$1 AND role='admin' ON CONFLICT(user_id) DO NOTHING",[SUPER_USERNAME]);
+ }
+ app.listen(process.env.PORT||3000,'0.0.0.0',()=>console.log('STAR777 admin listening'));
+}
+start().catch(e=>{console.error(e);process.exit(1)});
++params.length)}
+ if(market){if(!/^\d+$/.test(String(market)))return res.status(400).json({error:'Invalid market ID'});params.push(market);conditions.push('e.market_id=,auth,requirePermission('view_users'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT id,username,email,mobile,role,created_at FROM users ORDER BY id DESC LIMIT 100');res.json(rows)}));
+app.get('/api/markets',auth,requirePermission('view_markets'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT id,name,opens,closes,result_time,status_override,enabled FROM markets ORDER BY id');res.json(rows)}));
+app.get('/api/results',auth,requirePermission('view_results'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT r.id,m.name,r.result_date,r.result_text,r.open_result,r.close_result FROM results r JOIN markets m ON m.id=r.market_id ORDER BY r.result_date DESC LIMIT 100');res.json(rows)}));
+
+
+app.get('/api/admins',auth,superOnly,wrap(async(req,res)=>{const {rows}=await pool.query("SELECT u.id,u.username,u.email,a.admin_role,a.enabled,a.permissions,a.created_at FROM admin_accounts a JOIN users u ON u.id=a.user_id ORDER BY a.created_at DESC");res.json(rows)}));
+app.post('/api/admins',manageLimit,auth,superOnly,wrap(async(req,res)=>{
+ const {username,email,password,permissions:requested=[]}=req.body||{};
+ if(typeof username!=='string'||!/^[a-zA-Z0-9_]{3,24}$/.test(username)||username.toLowerCase()===SUPER_USERNAME||typeof email!=='string'||email.length>254||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)||typeof password!=='string'||password.length<16||password.length>128)return res.status(400).json({error:'Valid username, email and 16+ character password required'});
+ const allowed=validPerms(requested);if(!allowed)return res.status(400).json({error:'Invalid permissions'});
+ const salt=randomBytes(16).toString('hex'),hash=salt+':'+(await scrypt(password,salt,64)).toString('hex');
+ const client=await pool.connect();
+ try{await client.query('BEGIN');const {rows}=await client.query("INSERT INTO users(username,email,password_hash,role) VALUES($1,$2,$3,'admin') RETURNING id,username,email",[username.toLowerCase(),email.trim().toLowerCase(),hash]);await client.query("INSERT INTO admin_accounts(user_id,admin_role,permissions,enabled,created_by) VALUES($1,'admin',$2,true,$3)",[rows[0].id,allowed,req.admin.id]);await client.query('COMMIT');await audit(req.admin.id,'admin.create',String(rows[0].id),{username:rows[0].username});res.status(201).json({...rows[0],admin_role:'admin',permissions:allowed,enabled:true})}catch(e){await client.query('ROLLBACK');if(e.code==='23505')return res.status(409).json({error:'Username or email already exists'});throw e}finally{client.release()}
+}));
+app.patch('/api/admins/:id',manageLimit,auth,superOnly,wrap(async(req,res)=>{
+ const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1||Object.keys(req.body||{}).some(k=>!['enabled','permissions'].includes(k)))return res.status(400).json({error:'Invalid update'});
+ const {enabled,permissions:requested}=req.body||{};if(enabled!==undefined&&typeof enabled!=='boolean')return res.status(400).json({error:'Invalid enabled value'});
+ const allowed=requested===undefined?undefined:validPerms(requested);if(requested!==undefined&&!allowed)return res.status(400).json({error:'Invalid permissions'});
+ const {rows}=await pool.query("UPDATE admin_accounts SET enabled=COALESCE($2,enabled),permissions=COALESCE($3,permissions) WHERE user_id=$1 AND admin_role='admin' RETURNING user_id,enabled,permissions",[id,enabled??null,allowed??null]);
+ if(!rows.length)return res.status(404).json({error:'Admin not found or protected'});
+ if(enabled===false)await pool.query('DELETE FROM admin_sessions WHERE user_id=$1',[id]);await audit(req.admin.id,'admin.update',String(id),{enabled,permissions:allowed});
+ res.json(rows[0]);
+}));
+
+
+const validTime=t=>typeof t==='string'&&/^(0?[1-9]|1[0-2]):[0-5][0-9] (AM|PM)$/.test(t);
+const idOf=x=>/^[1-9][0-9]{0,15}$/.test(String(x))?String(x):null;
+const audit=async(adminId,action,target,details={})=>pool.query('INSERT INTO admin_audit(admin_id,action,target,details) VALUES($1,$2,$3,$4)',[adminId,action,target,JSON.stringify(details)]);
+const can=p=>(req,res,next)=>isSuper(req)||req.admin?.permissions?.includes(p)?next():res.status(403).json({error:'Permission denied'});
+app.get('/api/support',auth,can('view_support'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT t.id,t.user_id,u.username,t.message,t.status,t.created_at FROM support_tickets t JOIN users u ON u.id=t.user_id ORDER BY t.id DESC LIMIT 150');res.json(rows)}));
+app.patch('/api/support/:id',manageLimit,auth,can('manage_support'),wrap(async(req,res)=>{const id=idOf(req.params.id),status=req.body?.status;if(!id||!['open','in_progress','resolved'].includes(status)||Object.keys(req.body||{}).length!==1)return res.status(400).json({error:'Invalid ticket update'});const {rows}=await pool.query('UPDATE support_tickets SET status=$2 WHERE id=$1 RETURNING id,status',[id,status]);if(!rows.length)return res.status(404).json({error:'Ticket not found'});await audit(req.admin.id,'support.status',id,{status});res.json(rows[0])}));
+app.get('/api/audit',auth,can('view_audit'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT a.id,u.username AS admin,a.action,a.target,a.details,a.created_at FROM admin_audit a JOIN users u ON u.id=a.admin_id ORDER BY a.id DESC LIMIT 200');res.json(rows)}));
+app.post('/api/markets',manageLimit,auth,can('manage_markets'),wrap(async(req,res)=>{const {name,opens,closes,result_time}=req.body||{};if(result_time!==undefined&&!validTime(result_time))return res.status(400).json({error:'Invalid result time'});if(typeof name!=='string'||name.trim().length<3||name.length>80||typeof opens!=='string'||opens.length>30||typeof closes!=='string'||closes.length>30)return res.status(400).json({error:'Invalid market details'});try{const {rows}=await pool.query('INSERT INTO markets(name,opens,closes,result_time) VALUES($1,$2,$3,$4) RETURNING *',[name.trim(),opens.trim(),closes.trim(),result_time||closes.trim()]);await audit(req.admin.id,'market.create',String(rows[0].id),{name:rows[0].name});res.status(201).json(rows[0])}catch(e){if(e.code==='23505')return res.status(409).json({error:'Market already exists'});throw e}}));
+app.patch('/api/markets/:id',manageLimit,auth,can('manage_markets'),wrap(async(req,res)=>{
+ const id=idOf(req.params.id);
+ const {name,opens,closes,result_time,status_override,enabled}=req.body||{};
+ const permitted=['name','opens','closes','result_time','status_override','enabled'];
+ if(!id||!req.body||!Object.keys(req.body).length||Object.keys(req.body).some(k=>!permitted.includes(k)))return res.status(400).json({error:'Invalid market update'});
+ if(name!==undefined&&(typeof name!=='string'||name.trim().length<3||name.length>80))return res.status(400).json({error:'Invalid name'});
+ if(opens!==undefined&&(typeof opens!=='string'||!opens.trim()||opens.length>30))return res.status(400).json({error:'Invalid open time'});
+ if(closes!==undefined&&(typeof closes!=='string'||!closes.trim()||closes.length>30))return res.status(400).json({error:'Invalid close time'});
+ if(result_time!==undefined&&!validTime(result_time))return res.status(400).json({error:'Invalid result time'});
+ if(status_override!==undefined&&!['auto','holiday','closed'].includes(status_override))return res.status(400).json({error:'Invalid status override'});
+ if(enabled!==undefined&&typeof enabled!=='boolean')return res.status(400).json({error:'Invalid enabled value'});
+ try{
+  const {rows}=await pool.query("UPDATE markets SET name=COALESCE($2,name),opens=COALESCE($3,opens),closes=COALESCE($4,closes),enabled=COALESCE($5,enabled),result_time=COALESCE($6,result_time),status_override=CASE WHEN $7='auto' THEN NULL ELSE COALESCE($7,status_override) END WHERE id=$1 RETURNING *",[id,name?.trim()??null,opens?.trim()??null,closes?.trim()??null,enabled??null,result_time??null,status_override??null]);
+  if(!rows.length)return res.status(404).json({error:'Market not found'});
+  await audit(req.admin.id,'market.update',id,req.body);
+  res.json(rows[0]);
+ }catch(e){
+  if(e.code==='23505')return res.status(409).json({error:'Market name already exists'});
+  throw e;
+ }
+}));
+const panaOrder='1234567890';
+const validPana=value=>typeof value==='string'&&/^[0-9]{3}$/.test(value)&&value===value.split('').sort((a,b)=>panaOrder.indexOf(a)-panaOrder.indexOf(b)).join('');
+const panaAnk=value=>String([...value].reduce((n,d)=>n+Number(d),0)%10);
+const formatResult=(open,close)=>open+' - '+(close?panaAnk(open)+panaAnk(close):panaAnk(open)+'*')+' - '+(close||'***');
+app.post('/api/results',manageLimit,auth,can('manage_results'),wrap(async(req,res)=>{
+ const {marketId,date,result,phase}=req.body||{};
+ if(!idOf(marketId)||typeof date!=='string'||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date)||Number.isNaN(Date.parse(date))||!['open','close'].includes(phase)||typeof result!=='string'||!validPana(result))return res.status(400).json({error:'Invalid Pana. Use the standard 220 Pana chart (e.g. 139, 188, 780; not 198, 187, 078).'});
+ const client=await pool.connect();
+ try{await client.query('BEGIN');const {rows:existing}=await client.query('SELECT id,open_result,close_result FROM results WHERE market_id=$1 AND result_date=$2 FOR UPDATE',[marketId,date]);
+ let row=existing[0];if(!row){const created=await client.query("INSERT INTO results(market_id,result_date,result_text,open_result,close_result) VALUES($1,$2,'',$3,$4) ON CONFLICT(market_id,result_date) DO NOTHING RETURNING id,open_result,close_result",[marketId,date,phase==='open'?result:null,phase==='close'?result:null]);row=created.rows[0];if(!row){const again=await client.query('SELECT id,open_result,close_result FROM results WHERE market_id=$1 AND result_date=$2 FOR UPDATE',[marketId,date]);row=again.rows[0]}}
+ if(phase==='close'&&!row.open_result){await client.query('ROLLBACK');return res.status(409).json({error:'Publish Open result first'})}
+ const nextOpen=phase==='open'?result:row.open_result;
+ const nextClose=phase==='close'?result:row.close_result;
+ const {rows}=await client.query('UPDATE results SET open_result=$2,close_result=$3,result_text=$4 WHERE id=$1 RETURNING id,market_id,result_date,open_result,close_result,result_text',[row.id,nextOpen,nextClose,formatResult(nextOpen,nextClose)]);
+ await client.query('INSERT INTO admin_audit(admin_id,action,target,details) VALUES($1,$2,$3,$4)',[req.admin.id,'result.'+phase,String(row.id),JSON.stringify({marketId,date,phase})]);await client.query('COMMIT');notifyResult(marketId,date,phase,rows[0].result_text).catch(e=>console.error('Web push dispatch failed',e.message));notifyAndroid(marketId,date,phase,rows[0].result_text).catch(e=>console.error('FCM dispatch failed',e.message));res.json(rows[0])
+ }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
+}));
+
+const adminRoot=path.dirname(fileURLToPath(import.meta.url));
+app.use(express.static(adminRoot,{index:false,fallthrough:true}));
+app.get('/',(_req,res)=>res.sendFile(path.join(adminRoot,'index.html')));
+app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Internal server error'})});
+async function start(){
+ if(!process.env.ADMIN_ORIGIN)throw Error('ADMIN_ORIGIN required');
+ if(pool){
+  await pool.query("CREATE TABLE IF NOT EXISTS fcm_devices(user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,token TEXT PRIMARY KEY,created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await pool.query("CREATE TABLE IF NOT EXISTS push_subscriptions(id BIGSERIAL PRIMARY KEY,user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,endpoint TEXT NOT NULL UNIQUE,subscription JSONB NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await pool.query("ALTER TABLE markets ADD COLUMN IF NOT EXISTS result_time TEXT");
+  await pool.query("ALTER TABLE markets ADD COLUMN IF NOT EXISTS status_override TEXT");
+  await pool.query("UPDATE markets SET result_time=closes WHERE result_time IS NULL");
+  await pool.query("ALTER TABLE results ADD COLUMN IF NOT EXISTS open_result TEXT");
+  await pool.query("ALTER TABLE results ADD COLUMN IF NOT EXISTS close_result TEXT");
+  await pool.query("UPDATE results SET open_result=result_text WHERE open_result IS NULL AND close_result IS NULL AND result_text ~ '^[0-9]{3}$'");
+  await pool.query("CREATE TABLE IF NOT EXISTS admin_audit(id BIGSERIAL PRIMARY KEY,admin_id BIGINT NOT NULL REFERENCES users(id),action TEXT NOT NULL,target TEXT NOT NULL,details JSONB NOT NULL DEFAULT '{}',created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await pool.query("CREATE TABLE IF NOT EXISTS admin_sessions(id_hash TEXT PRIMARY KEY,user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,expires_at TIMESTAMPTZ NOT NULL)");
+  await pool.query("CREATE TABLE IF NOT EXISTS admin_accounts(user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,admin_role TEXT NOT NULL CHECK(admin_role IN ('super_admin','admin')),enabled BOOLEAN NOT NULL DEFAULT true,permissions TEXT[] NOT NULL DEFAULT '{}',created_by BIGINT REFERENCES users(id),created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS single_super_admin ON admin_accounts(admin_role) WHERE admin_role='super_admin'");
+  await pool.query("INSERT INTO admin_accounts(user_id,admin_role,permissions) SELECT id,'super_admin',ARRAY['view_users','view_markets','view_results'] FROM users WHERE username=$1 AND role='admin' ON CONFLICT(user_id) DO NOTHING",[SUPER_USERNAME]);
+ }
+ app.listen(process.env.PORT||3000,'0.0.0.0',()=>console.log('STAR777 admin listening'));
+}
+start().catch(e=>{console.error(e);process.exit(1)});
++params.length)}
+ if(date){if(!/^\d{4}-\d{2}-\d{2}$/.test(String(date)))return res.status(400).json({error:'Invalid date'});params.push(date);conditions.push('e.entry_date=,auth,requirePermission('view_users'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT id,username,email,mobile,role,created_at FROM users ORDER BY id DESC LIMIT 100');res.json(rows)}));
+app.get('/api/markets',auth,requirePermission('view_markets'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT id,name,opens,closes,result_time,status_override,enabled FROM markets ORDER BY id');res.json(rows)}));
+app.get('/api/results',auth,requirePermission('view_results'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT r.id,m.name,r.result_date,r.result_text,r.open_result,r.close_result FROM results r JOIN markets m ON m.id=r.market_id ORDER BY r.result_date DESC LIMIT 100');res.json(rows)}));
+
+
+app.get('/api/admins',auth,superOnly,wrap(async(req,res)=>{const {rows}=await pool.query("SELECT u.id,u.username,u.email,a.admin_role,a.enabled,a.permissions,a.created_at FROM admin_accounts a JOIN users u ON u.id=a.user_id ORDER BY a.created_at DESC");res.json(rows)}));
+app.post('/api/admins',manageLimit,auth,superOnly,wrap(async(req,res)=>{
+ const {username,email,password,permissions:requested=[]}=req.body||{};
+ if(typeof username!=='string'||!/^[a-zA-Z0-9_]{3,24}$/.test(username)||username.toLowerCase()===SUPER_USERNAME||typeof email!=='string'||email.length>254||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)||typeof password!=='string'||password.length<16||password.length>128)return res.status(400).json({error:'Valid username, email and 16+ character password required'});
+ const allowed=validPerms(requested);if(!allowed)return res.status(400).json({error:'Invalid permissions'});
+ const salt=randomBytes(16).toString('hex'),hash=salt+':'+(await scrypt(password,salt,64)).toString('hex');
+ const client=await pool.connect();
+ try{await client.query('BEGIN');const {rows}=await client.query("INSERT INTO users(username,email,password_hash,role) VALUES($1,$2,$3,'admin') RETURNING id,username,email",[username.toLowerCase(),email.trim().toLowerCase(),hash]);await client.query("INSERT INTO admin_accounts(user_id,admin_role,permissions,enabled,created_by) VALUES($1,'admin',$2,true,$3)",[rows[0].id,allowed,req.admin.id]);await client.query('COMMIT');await audit(req.admin.id,'admin.create',String(rows[0].id),{username:rows[0].username});res.status(201).json({...rows[0],admin_role:'admin',permissions:allowed,enabled:true})}catch(e){await client.query('ROLLBACK');if(e.code==='23505')return res.status(409).json({error:'Username or email already exists'});throw e}finally{client.release()}
+}));
+app.patch('/api/admins/:id',manageLimit,auth,superOnly,wrap(async(req,res)=>{
+ const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1||Object.keys(req.body||{}).some(k=>!['enabled','permissions'].includes(k)))return res.status(400).json({error:'Invalid update'});
+ const {enabled,permissions:requested}=req.body||{};if(enabled!==undefined&&typeof enabled!=='boolean')return res.status(400).json({error:'Invalid enabled value'});
+ const allowed=requested===undefined?undefined:validPerms(requested);if(requested!==undefined&&!allowed)return res.status(400).json({error:'Invalid permissions'});
+ const {rows}=await pool.query("UPDATE admin_accounts SET enabled=COALESCE($2,enabled),permissions=COALESCE($3,permissions) WHERE user_id=$1 AND admin_role='admin' RETURNING user_id,enabled,permissions",[id,enabled??null,allowed??null]);
+ if(!rows.length)return res.status(404).json({error:'Admin not found or protected'});
+ if(enabled===false)await pool.query('DELETE FROM admin_sessions WHERE user_id=$1',[id]);await audit(req.admin.id,'admin.update',String(id),{enabled,permissions:allowed});
+ res.json(rows[0]);
+}));
+
+
+const validTime=t=>typeof t==='string'&&/^(0?[1-9]|1[0-2]):[0-5][0-9] (AM|PM)$/.test(t);
+const idOf=x=>/^[1-9][0-9]{0,15}$/.test(String(x))?String(x):null;
+const audit=async(adminId,action,target,details={})=>pool.query('INSERT INTO admin_audit(admin_id,action,target,details) VALUES($1,$2,$3,$4)',[adminId,action,target,JSON.stringify(details)]);
+const can=p=>(req,res,next)=>isSuper(req)||req.admin?.permissions?.includes(p)?next():res.status(403).json({error:'Permission denied'});
+app.get('/api/support',auth,can('view_support'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT t.id,t.user_id,u.username,t.message,t.status,t.created_at FROM support_tickets t JOIN users u ON u.id=t.user_id ORDER BY t.id DESC LIMIT 150');res.json(rows)}));
+app.patch('/api/support/:id',manageLimit,auth,can('manage_support'),wrap(async(req,res)=>{const id=idOf(req.params.id),status=req.body?.status;if(!id||!['open','in_progress','resolved'].includes(status)||Object.keys(req.body||{}).length!==1)return res.status(400).json({error:'Invalid ticket update'});const {rows}=await pool.query('UPDATE support_tickets SET status=$2 WHERE id=$1 RETURNING id,status',[id,status]);if(!rows.length)return res.status(404).json({error:'Ticket not found'});await audit(req.admin.id,'support.status',id,{status});res.json(rows[0])}));
+app.get('/api/audit',auth,can('view_audit'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT a.id,u.username AS admin,a.action,a.target,a.details,a.created_at FROM admin_audit a JOIN users u ON u.id=a.admin_id ORDER BY a.id DESC LIMIT 200');res.json(rows)}));
+app.post('/api/markets',manageLimit,auth,can('manage_markets'),wrap(async(req,res)=>{const {name,opens,closes,result_time}=req.body||{};if(result_time!==undefined&&!validTime(result_time))return res.status(400).json({error:'Invalid result time'});if(typeof name!=='string'||name.trim().length<3||name.length>80||typeof opens!=='string'||opens.length>30||typeof closes!=='string'||closes.length>30)return res.status(400).json({error:'Invalid market details'});try{const {rows}=await pool.query('INSERT INTO markets(name,opens,closes,result_time) VALUES($1,$2,$3,$4) RETURNING *',[name.trim(),opens.trim(),closes.trim(),result_time||closes.trim()]);await audit(req.admin.id,'market.create',String(rows[0].id),{name:rows[0].name});res.status(201).json(rows[0])}catch(e){if(e.code==='23505')return res.status(409).json({error:'Market already exists'});throw e}}));
+app.patch('/api/markets/:id',manageLimit,auth,can('manage_markets'),wrap(async(req,res)=>{
+ const id=idOf(req.params.id);
+ const {name,opens,closes,result_time,status_override,enabled}=req.body||{};
+ const permitted=['name','opens','closes','result_time','status_override','enabled'];
+ if(!id||!req.body||!Object.keys(req.body).length||Object.keys(req.body).some(k=>!permitted.includes(k)))return res.status(400).json({error:'Invalid market update'});
+ if(name!==undefined&&(typeof name!=='string'||name.trim().length<3||name.length>80))return res.status(400).json({error:'Invalid name'});
+ if(opens!==undefined&&(typeof opens!=='string'||!opens.trim()||opens.length>30))return res.status(400).json({error:'Invalid open time'});
+ if(closes!==undefined&&(typeof closes!=='string'||!closes.trim()||closes.length>30))return res.status(400).json({error:'Invalid close time'});
+ if(result_time!==undefined&&!validTime(result_time))return res.status(400).json({error:'Invalid result time'});
+ if(status_override!==undefined&&!['auto','holiday','closed'].includes(status_override))return res.status(400).json({error:'Invalid status override'});
+ if(enabled!==undefined&&typeof enabled!=='boolean')return res.status(400).json({error:'Invalid enabled value'});
+ try{
+  const {rows}=await pool.query("UPDATE markets SET name=COALESCE($2,name),opens=COALESCE($3,opens),closes=COALESCE($4,closes),enabled=COALESCE($5,enabled),result_time=COALESCE($6,result_time),status_override=CASE WHEN $7='auto' THEN NULL ELSE COALESCE($7,status_override) END WHERE id=$1 RETURNING *",[id,name?.trim()??null,opens?.trim()??null,closes?.trim()??null,enabled??null,result_time??null,status_override??null]);
+  if(!rows.length)return res.status(404).json({error:'Market not found'});
+  await audit(req.admin.id,'market.update',id,req.body);
+  res.json(rows[0]);
+ }catch(e){
+  if(e.code==='23505')return res.status(409).json({error:'Market name already exists'});
+  throw e;
+ }
+}));
+const panaOrder='1234567890';
+const validPana=value=>typeof value==='string'&&/^[0-9]{3}$/.test(value)&&value===value.split('').sort((a,b)=>panaOrder.indexOf(a)-panaOrder.indexOf(b)).join('');
+const panaAnk=value=>String([...value].reduce((n,d)=>n+Number(d),0)%10);
+const formatResult=(open,close)=>open+' - '+(close?panaAnk(open)+panaAnk(close):panaAnk(open)+'*')+' - '+(close||'***');
+app.post('/api/results',manageLimit,auth,can('manage_results'),wrap(async(req,res)=>{
+ const {marketId,date,result,phase}=req.body||{};
+ if(!idOf(marketId)||typeof date!=='string'||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date)||Number.isNaN(Date.parse(date))||!['open','close'].includes(phase)||typeof result!=='string'||!validPana(result))return res.status(400).json({error:'Invalid Pana. Use the standard 220 Pana chart (e.g. 139, 188, 780; not 198, 187, 078).'});
+ const client=await pool.connect();
+ try{await client.query('BEGIN');const {rows:existing}=await client.query('SELECT id,open_result,close_result FROM results WHERE market_id=$1 AND result_date=$2 FOR UPDATE',[marketId,date]);
+ let row=existing[0];if(!row){const created=await client.query("INSERT INTO results(market_id,result_date,result_text,open_result,close_result) VALUES($1,$2,'',$3,$4) ON CONFLICT(market_id,result_date) DO NOTHING RETURNING id,open_result,close_result",[marketId,date,phase==='open'?result:null,phase==='close'?result:null]);row=created.rows[0];if(!row){const again=await client.query('SELECT id,open_result,close_result FROM results WHERE market_id=$1 AND result_date=$2 FOR UPDATE',[marketId,date]);row=again.rows[0]}}
+ if(phase==='close'&&!row.open_result){await client.query('ROLLBACK');return res.status(409).json({error:'Publish Open result first'})}
+ const nextOpen=phase==='open'?result:row.open_result;
+ const nextClose=phase==='close'?result:row.close_result;
+ const {rows}=await client.query('UPDATE results SET open_result=$2,close_result=$3,result_text=$4 WHERE id=$1 RETURNING id,market_id,result_date,open_result,close_result,result_text',[row.id,nextOpen,nextClose,formatResult(nextOpen,nextClose)]);
+ await client.query('INSERT INTO admin_audit(admin_id,action,target,details) VALUES($1,$2,$3,$4)',[req.admin.id,'result.'+phase,String(row.id),JSON.stringify({marketId,date,phase})]);await client.query('COMMIT');notifyResult(marketId,date,phase,rows[0].result_text).catch(e=>console.error('Web push dispatch failed',e.message));notifyAndroid(marketId,date,phase,rows[0].result_text).catch(e=>console.error('FCM dispatch failed',e.message));res.json(rows[0])
+ }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
+}));
+
+const adminRoot=path.dirname(fileURLToPath(import.meta.url));
+app.use(express.static(adminRoot,{index:false,fallthrough:true}));
+app.get('/',(_req,res)=>res.sendFile(path.join(adminRoot,'index.html')));
+app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Internal server error'})});
+async function start(){
+ if(!process.env.ADMIN_ORIGIN)throw Error('ADMIN_ORIGIN required');
+ if(pool){
+  await pool.query("CREATE TABLE IF NOT EXISTS fcm_devices(user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,token TEXT PRIMARY KEY,created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await pool.query("CREATE TABLE IF NOT EXISTS push_subscriptions(id BIGSERIAL PRIMARY KEY,user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,endpoint TEXT NOT NULL UNIQUE,subscription JSONB NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await pool.query("ALTER TABLE markets ADD COLUMN IF NOT EXISTS result_time TEXT");
+  await pool.query("ALTER TABLE markets ADD COLUMN IF NOT EXISTS status_override TEXT");
+  await pool.query("UPDATE markets SET result_time=closes WHERE result_time IS NULL");
+  await pool.query("ALTER TABLE results ADD COLUMN IF NOT EXISTS open_result TEXT");
+  await pool.query("ALTER TABLE results ADD COLUMN IF NOT EXISTS close_result TEXT");
+  await pool.query("UPDATE results SET open_result=result_text WHERE open_result IS NULL AND close_result IS NULL AND result_text ~ '^[0-9]{3}$'");
+  await pool.query("CREATE TABLE IF NOT EXISTS admin_audit(id BIGSERIAL PRIMARY KEY,admin_id BIGINT NOT NULL REFERENCES users(id),action TEXT NOT NULL,target TEXT NOT NULL,details JSONB NOT NULL DEFAULT '{}',created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await pool.query("CREATE TABLE IF NOT EXISTS admin_sessions(id_hash TEXT PRIMARY KEY,user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,expires_at TIMESTAMPTZ NOT NULL)");
+  await pool.query("CREATE TABLE IF NOT EXISTS admin_accounts(user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,admin_role TEXT NOT NULL CHECK(admin_role IN ('super_admin','admin')),enabled BOOLEAN NOT NULL DEFAULT true,permissions TEXT[] NOT NULL DEFAULT '{}',created_by BIGINT REFERENCES users(id),created_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS single_super_admin ON admin_accounts(admin_role) WHERE admin_role='super_admin'");
+  await pool.query("INSERT INTO admin_accounts(user_id,admin_role,permissions) SELECT id,'super_admin',ARRAY['view_users','view_markets','view_results'] FROM users WHERE username=$1 AND role='admin' ON CONFLICT(user_id) DO NOTHING",[SUPER_USERNAME]);
+ }
+ app.listen(process.env.PORT||3000,'0.0.0.0',()=>console.log('STAR777 admin listening'));
+}
+start().catch(e=>{console.error(e);process.exit(1)});
++params.length)}
+ const sql='SELECT e.id,e.user_id,u.username,m.name AS market,e.market_id,e.game_type,e.selection,e.points,e.session,e.entry_date,e.status,e.created_at FROM game_entries e JOIN users u ON u.id=e.user_id JOIN markets m ON m.id=e.market_id '+(conditions.length?'WHERE '+conditions.join(' AND '):'')+' ORDER BY e.id DESC LIMIT 500';
+ const {rows}=await pool.query(sql,params);res.json(rows)
+}));
+app.get('/api/game-entry-summary',auth,superOnly,wrap(async(req,res)=>{
+ const {rows}=await pool.query("SELECT m.id AS market_id,m.name AS market,COUNT(e.id)::int AS entries,COALESCE(SUM(e.points),0)::bigint AS total_points,COUNT(DISTINCT e.user_id)::int AS users FROM markets m LEFT JOIN game_entries e ON e.market_id=m.id GROUP BY m.id,m.name ORDER BY m.name");res.json(rows)
+}));
 app.get('/api/users',auth,requirePermission('view_users'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT id,username,email,mobile,role,created_at FROM users ORDER BY id DESC LIMIT 100');res.json(rows)}));
 app.get('/api/markets',auth,requirePermission('view_markets'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT id,name,opens,closes,result_time,status_override,enabled FROM markets ORDER BY id');res.json(rows)}));
 app.get('/api/results',auth,requirePermission('view_results'),wrap(async(req,res)=>{const {rows}=await pool.query('SELECT r.id,m.name,r.result_date,r.result_text,r.open_result,r.close_result FROM results r JOIN markets m ON m.id=r.market_id ORDER BY r.result_date DESC LIMIT 100');res.json(rows)}));
