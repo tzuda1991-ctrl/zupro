@@ -56,6 +56,31 @@ app.get('/api/me',auth,(req,res)=>res.json(req.admin));
 app.post('/api/logout',auth,wrap(async(req,res)=>{await pool.query('DELETE FROM admin_sessions WHERE id_hash=$1',[digest(req.cookies.star777_admin)]);res.clearCookie('star777_admin',{path:'/'});res.json({ok:true})}));
 app.get('/api/summary',auth,wrap(async(req,res)=>{const [u,m,t]=await Promise.all([pool.query('SELECT count(*)::int AS count FROM users'),pool.query('SELECT count(*)::int AS count FROM markets WHERE enabled=true'),pool.query("SELECT count(*)::int AS count FROM support_tickets WHERE status='open'")]);res.json({users:u.rows[0].count,markets:m.rows[0].count,tickets:t.rows[0].count})}));
 const manageLimit=rateLimit({windowMs:15*60*1000,limit:15,standardHeaders:'draft-7',legacyHeaders:false});
+app.get('/api/withdrawals',auth,superOnly,wrap(async(req,res)=>{
+ const {rows}=await pool.query('SELECT w.id,w.user_id,u.username,w.amount_paise,w.method,w.payout_details,w.status,w.payout_reference,w.created_at,w.reviewed_at FROM withdrawal_requests w JOIN users u ON u.id=w.user_id ORDER BY w.id DESC LIMIT 200');res.json(rows)
+}));
+app.post('/api/withdrawals/:id/review',manageLimit,auth,superOnly,wrap(async(req,res)=>{
+ const {status,reference}=req.body||{};
+ if(!['completed','rejected'].includes(status)||status==='completed'&&(typeof reference!=='string'||reference.trim().length<6||reference.length>100))return res.status(400).json({error:'Valid decision and payout reference required'});
+ const client=await pool.connect();
+ try{
+  await client.query('BEGIN');
+  const lookup=await client.query('SELECT user_id FROM withdrawal_requests WHERE id=$1',[req.params.id]);
+  if(!lookup.rows.length){await client.query('ROLLBACK');return res.status(404).json({error:'Not found'})}
+  await client.query('SELECT id FROM users WHERE id=$1 FOR UPDATE',[lookup.rows[0].user_id]);
+  const {rows}=await client.query('SELECT * FROM withdrawal_requests WHERE id=$1 FOR UPDATE',[req.params.id]);
+  const w=rows[0];
+  if(w.status!=='pending'){await client.query('ROLLBACK');return res.status(409).json({error:'Already reviewed'})}
+  if(status==='completed'){
+   const balance=await client.query('SELECT COALESCE(SUM(amount_paise),0)::bigint AS amount FROM wallet_ledger WHERE user_id=$1',[w.user_id]);
+   if(Number(balance.rows[0].amount)<Number(w.amount_paise)){await client.query('ROLLBACK');return res.status(409).json({error:'Insufficient ledger balance'})}
+   await client.query('INSERT INTO wallet_ledger(user_id,amount_paise,note) VALUES($1,$2,$3)',[w.user_id,-Number(w.amount_paise),'Withdrawal #'+w.id+' payout '+reference.trim()]);
+  }
+  await client.query('UPDATE withdrawal_requests SET status=$1,payout_reference=$2,reviewed_by=$3,reviewed_at=now() WHERE id=$4',[status,status==='completed'?reference.trim():null,req.admin.id,w.id]);
+  await client.query('INSERT INTO admin_audit(admin_id,action,target,details) VALUES($1,$2,$3,$4)',[req.admin.id,'withdrawal.'+status,String(w.id),JSON.stringify({amount_paise:w.amount_paise,reference:status==='completed'?reference.trim():null})]);
+  await client.query('COMMIT');res.json({id:w.id,status})
+ }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
+}));
 app.get('/api/payment-requests',auth,superOnly,wrap(async(req,res)=>{
  const {rows}=await pool.query("SELECT p.id,p.user_id,u.username,p.method,p.amount_paise,p.utr,p.status,p.created_at,p.reviewed_at FROM payment_requests p JOIN users u ON u.id=p.user_id ORDER BY p.id DESC LIMIT 200");res.json(rows)
 }));
