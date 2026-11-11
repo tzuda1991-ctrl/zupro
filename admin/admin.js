@@ -34,14 +34,25 @@ function closeMenu() {
 }
 
 async function api(path, opts = {}) {
-  const r = await fetch('/api/' + path, {
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
-    ...opts
-  });
+  let r;
+  try {
+    r = await fetch('/api/' + path, {
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      ...opts
+    });
+  } catch (err) {
+    throw Error('Network connection failed (' + (err.message || 'Offline') + ')');
+  }
+  const text = await r.text();
   let data;
-  try { data = await r.json(); } catch { throw Error('Server unavailable'); }
-  if (!r.ok) throw Error(data.error || 'Request failed');
+  try {
+    data = JSON.parse(text);
+  } catch {
+    if (!r.ok) throw Error('Server returned HTTP ' + r.status + ': ' + text.slice(0, 100));
+    throw Error('Invalid JSON response from server');
+  }
+  if (!r.ok) throw Error(data.error || data.message || ('Request failed: HTTP ' + r.status));
   return data;
 }
 
@@ -702,7 +713,8 @@ async function resultControls() {
 
 // 5. WITHDRAWALS
 async function renderWithdrawals() {
-  const rows = await api('withdrawals');
+  let rows = [];
+  try { rows = await api('admin/withdrawals'); } catch { rows = await api('withdrawals'); }
   $('content').innerHTML = '<div class="panel"><h2>Withdrawal Queue</h2><p class="muted">Only mark completed after funds are sent and confirmed. A payout reference is required.</p><div class="table-wrap"><table><thead><tr><th>ID</th><th>User</th><th>Points</th><th>Method</th><th>Payout Details</th><th>Status</th><th>Actions</th></tr></thead><tbody>' + rows.map(r => '<tr><td>' + esc(r.id) + '</td><td>' + esc(r.username) + '</td><td>₹' + esc(Number(r.amount_paise) / 100) + '</td><td>' + esc(r.method) + '</td><td>' + esc(r.payout_details) + '</td><td>' + esc(r.status) + '</td><td>' + (r.status === 'pending' ? '<button class="outline" data-complete="' + esc(r.id) + '">Complete</button> <button class="outline" data-reject="' + esc(r.id) + '">Reject</button>' : esc(r.payout_reference || '—')) + '</td></tr>').join('') + '</tbody></table></div></div>';
   document.querySelectorAll('[data-complete]').forEach(b => b.onclick = async () => {
     const reference = prompt('Enter verified bank/UPI payout reference (UTR / Ref):');
@@ -725,7 +737,8 @@ async function renderWithdrawals() {
 
 // 6. PAYMENT REQUESTS
 async function renderPayments() {
-  const rows = await api('payment-requests');
+  let rows = [];
+  try { rows = await api('admin/payment-requests'); } catch { rows = await api('payment-requests'); }
   $('content').innerHTML = '<div class="panel"><h2>Payment Verification Queue</h2><p class="muted">Confirm funds against UPI/bank records using the 12-digit UTR before approval.</p><div class="table-wrap"><table><thead><tr><th>ID</th><th>User</th><th>Method</th><th>Amount</th><th>UTR Reference</th><th>Status</th><th>Actions</th></tr></thead><tbody>' + rows.map(r => '<tr><td>' + esc(r.id) + '</td><td>' + esc(r.username) + '</td><td>' + esc(r.method.toUpperCase()) + '</td><td><strong>₹' + esc((Number(r.amount_paise) / 100).toFixed(2)) + '</strong></td><td><strong style="color:#0d2955;letter-spacing:1px">' + esc(r.utr) + '</strong></td><td><span class="pill ' + (r.status === 'approved' ? '' : r.status === 'rejected' ? 'off' : '') + '">' + esc(r.status) + '</span></td><td><button class="outline" data-proof="' + esc(r.id) + '">Proof</button> ' + (r.status === 'pending' ? '<button class="outline" data-review="' + esc(r.id) + '" data-decision="approved" style="color:#1b8754;border-color:#1b8754">Approve</button> <button class="outline" data-review="' + esc(r.id) + '" data-decision="rejected" style="color:#dc3545;border-color:#dc3545">Reject</button>' : '') + '</td></tr>').join('') + '</tbody></table></div><div id="paymentProof" style="margin-top:16px"></div></div>';
   document.querySelectorAll('[data-proof]').forEach(b => b.onclick = async () => {
     const id = b.dataset.proof;

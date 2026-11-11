@@ -54,7 +54,7 @@ class MainActivity : Activity() {
             }
         }
 
-        web.webChromeClient = object : WebChromeClient() {
+                web.webChromeClient = object : WebChromeClient() {
             override fun onShowFileChooser(
                 webView: WebView?,
                 filePathCallback: ValueCallback<Array<Uri>>?,
@@ -62,22 +62,24 @@ class MainActivity : Activity() {
             ): Boolean {
                 this@MainActivity.filePathCallback?.onReceiveValue(null)
                 this@MainActivity.filePathCallback = filePathCallback
-
-                val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
-                    type = "image/*"
-                    addCategory(Intent.CATEGORY_OPENABLE)
-                    putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/jpeg", "image/png", "image/webp"))
-                }
                 try {
+                    val intent = fileChooserParams?.createIntent() ?: Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*" }
                     startActivityForResult(
-                        Intent.createChooser(intent, "Choose Payment Proof"),
+                        Intent.createChooser(intent, "Choose Payment Proof Screenshot"),
                         FILE_CHOOSER_REQUEST_CODE
                     )
+                    return true
                 } catch (e: Exception) {
-                    this@MainActivity.filePathCallback = null
-                    return false
+                    try {
+                        val fallback = Intent(Intent.ACTION_PICK, android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+                        startActivityForResult(fallback, FILE_CHOOSER_REQUEST_CODE)
+                        return true
+                    } catch (_: Exception) {
+                        this@MainActivity.filePathCallback?.onReceiveValue(null)
+                        this@MainActivity.filePathCallback = null
+                        return false
+                    }
                 }
-                return true
             }
         }
 

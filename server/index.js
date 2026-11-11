@@ -155,13 +155,41 @@ app.post('/api/payment-requests',paymentLimit,db,authenticate,wrap(async(req,res
  try{const {rows}=await pool.query('INSERT INTO payment_requests(user_id,method,amount_paise,utr,proof_data) VALUES($1,$2,$3,$4,$5) RETURNING id,status,created_at',[req.user.id,method,Math.round(amount*100),utr,proofData]);res.status(201).json(rows[0])}
  catch(e){if(e.code==='23505')return res.status(409).json({error:'Transaction reference already submitted'});throw e}
 }));
-app.get('/api/payment-requests',db,authenticate,wrap(async(req,res)=>{
- const {rows}=await pool.query('SELECT id,method,amount_paise,utr,status,created_at,reviewed_at FROM payment_requests WHERE user_id=$1 ORDER BY id DESC LIMIT 100',[req.user.id]);res.json(rows)
+app.get(['/api/payment-requests', '/api/admin/payment-requests'], db, authenticate, wrap(async (req, res) => {
+  if (req.user.role === 'admin') {
+    const {rows} = await pool.query(`
+      SELECT p.id, p.user_id, u.username, p.method, p.amount_paise, p.utr, p.proof_data, p.status, p.created_at, p.reviewed_at
+      FROM payment_requests p
+      JOIN users u ON u.id = p.user_id
+      ORDER BY p.id DESC
+      LIMIT 100
+    `);
+    return res.json(rows);
+  }
+  const {rows} = await pool.query(
+    'SELECT id, method, amount_paise, utr, status, created_at, reviewed_at FROM payment_requests WHERE user_id=$1 ORDER BY id DESC LIMIT 100',
+    [req.user.id]
+  );
+  res.json(rows);
 }));
 app.get('/api/wallet',db,authenticate,wrap(async(req,res)=>{const {rows}=await pool.query('SELECT COALESCE(SUM(amount_paise),0)::bigint AS balance_paise FROM wallet_ledger WHERE user_id=$1',[req.user.id]);res.json({currency:'INR',balance_paise:Number(rows[0].balance_paise),balance:Number(rows[0].balance_paise)/100})}));
 app.get('/api/transactions',db,authenticate,wrap(async(req,res)=>{const {rows}=await pool.query('SELECT id,amount_paise,note,created_at FROM wallet_ledger WHERE user_id=$1 ORDER BY id DESC LIMIT 100',[req.user.id]);res.json(rows)}));
-app.get('/api/withdrawals',db,authenticate,wrap(async(req,res)=>{
- const {rows}=await pool.query('SELECT id,amount_paise,method,status,created_at,reviewed_at FROM withdrawal_requests WHERE user_id=$1 ORDER BY id DESC LIMIT 100',[req.user.id]);res.json(rows)
+app.get(['/api/withdrawals', '/api/admin/withdrawals'], db, authenticate, wrap(async (req, res) => {
+  if (req.user.role === 'admin') {
+    const {rows} = await pool.query(`
+      SELECT w.id, w.user_id, u.username, w.amount_paise, w.method, w.payout_details, w.status, w.payout_reference, w.created_at, w.reviewed_at
+      FROM withdrawal_requests w
+      JOIN users u ON u.id = w.user_id
+      ORDER BY w.id DESC
+      LIMIT 100
+    `);
+    return res.json(rows);
+  }
+  const {rows} = await pool.query(
+    'SELECT id, amount_paise, method, status, created_at, reviewed_at FROM withdrawal_requests WHERE user_id=$1 ORDER BY id DESC LIMIT 100',
+    [req.user.id]
+  );
+  res.json(rows);
 }));
 app.post('/api/withdrawals',paymentLimit,db,authenticate,wrap(async(req,res)=>{
  const {points,method,details}=req.body||{};
